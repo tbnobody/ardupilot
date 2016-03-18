@@ -29,8 +29,7 @@
 #include "../../ArduCopter/defines.h"
 #endif
 
-class AP_HoTT_Telem
-{
+class AP_HoTT_Telem {
 public:
     //constructor
     AP_HoTT_Telem(AP_AHRS &ahrs, AP_BattMonitor &battery, Location &current_loc, AP_Baro &barometer);
@@ -50,31 +49,33 @@ private:
     void hott_tick();
 
     // send_data - sends data from specified struct to uart
-		void send_data(uint8_t *buffer);
-		
-		// update_gps_data - writes data into _hott_gps_msg struct
-	  void update_gps_data();
-	  
-	  // update_eam_data - writes data into _hott_eam_msg struct
-	  void update_eam_data();
-	  
-	  // update_vario_data - writes data into _hott_vario_msg struct
-	  void update_vario_data();
-	  
-	  // convertLatLong
-	  void convertLatLong(float degree, uint8_t &posNS_EW, uint16_t &degMinutes, uint16_t &degSeconds);
+    void send_data(uint8_t *buffer);
+
+    // update_gps_data - writes data into _hott_gps_msg struct
+    void update_gps_data();
+
+    // update_eam_data - writes data into _hott_eam_msg struct
+    void update_eam_data();
+
+    // update_vario_data - writes data into _hott_vario_msg struct
+    void update_vario_data();
+
+    // convert_lat_long
+    void convert_lat_long(float degree, uint8_t &posNS_EW, uint16_t &degMinutes, uint16_t &degSeconds);
 
     // processClimbrate - calculates and maintans climbrate changes
     //  called every 1s with current altitude as input
-    void processClimbrate(int16_t currentAltitude);
-    
-    void eamCheck_mAh(void);
-    
-    void eamCheck_mainPower(void);
-	  
-	  // get_altitude_rel - 
-	  uint16_t get_altitude_rel();
-	  
+    void process_climbrate(int16_t current_altitude);
+
+    // eam_check_mah - check for used mAh
+    void eam_check_mah(void);
+
+    // eam_check_main_power - check for low batteries
+    void eam_check_main_power(void);
+
+    // get_altitude_rel - get relative altitude from ground
+    uint16_t get_altitude_rel();
+
     AP_AHRS &_ahrs;                         // reference to attitude estimate
     AP_BattMonitor &_battery;               // reference to battery monitor object
     Location &_current_loc;                 // reference to current_loc object
@@ -88,12 +89,11 @@ private:
     int32_t _home_distance;
     int32_t _home_bearing;
     bool _armed;
-    
+
     uint32_t _current_delay_ms;
     uint32_t _last_delay_ms;
-    
     uint32_t _last_delay_1s;
-    
+
     enum HottStatus {
         HottIdle = 0,
         HottRcvMode = 1,
@@ -102,26 +102,26 @@ private:
         HottSendEAM = 4,
         HottSendVario = 5
     };
-    
+
     HottStatus _hott_status;
-    
+
     struct HOTT_GPS_MSG _hott_gps_msg;
     struct HOTT_EAM_MSG _hott_eam_msg;
     struct HOTT_VARIO_MSG _hott_vario_msg;
-    
+
     size_t _current_msg_size;
     size_t _current_msg_pos;
     uint16_t _checksum;
-    
+
     // for vario calculations
     int _climbrate1s;
     int _climbrate3s;
     int _climbrate10s;
-    
+
     // electrical time
     uint32_t _electric_time;  //time in ARMED mode in seconds
-    
+
     AP_HoTT_Alarm _alarms;
-    
+
 };
 #endif
