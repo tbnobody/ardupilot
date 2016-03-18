@@ -19,6 +19,8 @@
 
 #include <string.h>
 #include <inttypes.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <AP_Vehicle/AP_Vehicle.h>
 #include "hott_msgs.h"
 
@@ -34,11 +36,41 @@ public:
     void handle(uint8_t address);
 
 private:
+    struct hott_menu {
+        const char *param_name;
+        bool editable;
+        float step_size;
+    };
+
     void clear_screen();
 
     void print_word(uint8_t pos, char const *text, bool inverted);
+    
+    uint8_t print_page(float param_value_new);
+    
+    void perform_navigation(uint8_t key, uint8_t param_id, float &param_value_new, uint8_t params_per_page);
+    
+    void perform_edit(uint8_t key, uint8_t param_id, float &param_value_new);
+    
+    float get_param_as_float(const char *key);
+    
+    void get_param_as_char(const char *key, char *buffer);
+    
+    void get_value_as_char(const char *key, char *buffer, float value);
 
     HOTT_TEXTMODE_MSG &_msg;
+    bool _editmode;
+    uint8_t _page;
+    uint8_t _row;
+    uint8_t _max_pages;
+    uint8_t _num_parameters;
+    
+    const hott_menu _settings[3] = {
+        // Parameter Name,  editable, step_size
+	      {"FS_BATT_MAH",     false,    50},
+        {"FS_BATT_VOLTAGE", false,    0.1},
+        {"BATT_CAPACITY",   false,    50},
+    };
 
 };
 #endif
