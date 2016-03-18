@@ -573,20 +573,7 @@ void AP_HoTT_Telem::update_vario_data()
 // eam_check_mah - check for used mAh
 void AP_HoTT_Telem::eam_check_mah(void)
 {
-    uint32_t battery_pack_capacity = 0;
-
-    enum ap_var_type var_type;
-    AP_Param *vp;
-    vp = AP_Param::find("BATT_CAPACITY", &var_type);
-    if (vp != NULL) {
-        if (var_type == AP_PARAM_INT32) {
-            battery_pack_capacity = ((AP_Int32 *)vp)->get();
-        }
-    } else {
-        battery_pack_capacity = 0;  //not found
-    }
-
-    if ((battery_pack_capacity < _battery.current_total_mah()) && (battery_pack_capacity > 0)) {
+    if (_battery.has_current() && (_battery.capacity_remaining_pct() < 30)) {
         AP_HoTT_Alarm::HoTT_Alarm_Event_t hott_eam_alarm_event;
         hott_eam_alarm_event.alarm_time = 6;   // 1sec units
         hott_eam_alarm_event.alarm_time_replay = 15;   // 1sec units
