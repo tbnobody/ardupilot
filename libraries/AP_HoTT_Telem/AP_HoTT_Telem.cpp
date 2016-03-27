@@ -373,12 +373,12 @@ void AP_HoTT_Telem::process_climbrate(int16_t current_altitude)
     _climbrate10s = altitude_data[x] - altitude_data[next_data];
 }
 
-uint16_t AP_HoTT_Telem::get_altitude_rel()
+int16_t AP_HoTT_Telem::get_altitude_rel()
 {
     if (_current_loc.flags.relative_alt) {
-        return 500 + (_current_loc.alt / 100);
+        return (_current_loc.alt / 100);
     } else {
-        return 500 + ((_current_loc.alt - _ahrs.get_home().alt) / 100);
+        return ((_current_loc.alt - _ahrs.get_home().alt) / 100);
     }
 }
 
@@ -394,7 +394,7 @@ void AP_HoTT_Telem::update_gps_data()
     }
 
     // Altitude meters above ground
-    (uint16_t &)_hott_gps_msg.altitude_L = get_altitude_rel();
+    (int16_t &)_hott_gps_msg.altitude_L = HOTT_OFFSET_ALTITUDE + get_altitude_rel();
 
     // Flight Direction
     _hott_gps_msg.flight_direction = gps.ground_course_cd() / 200; // in 2* steps
@@ -492,7 +492,7 @@ void AP_HoTT_Telem::update_eam_data()
     (uint16_t &)_hott_eam_msg.climbrate_L = 30000 + _climbrate1s;
 
     // Altitude
-    (int16_t &)_hott_eam_msg.altitude_L = get_altitude_rel();
+    (int16_t &)_hott_eam_msg.altitude_L = HOTT_OFFSET_ALTITUDE + get_altitude_rel();
 
     // Electric time. Time the APM is ARMED
     _hott_eam_msg.electric_min = _electric_time / 60;
@@ -527,23 +527,23 @@ void AP_HoTT_Telem::update_vario_data()
     const uint8_t ARMED_STR[]   = "ARMED";
     const uint8_t DISARMED_STR[] = "DISARMED";
 
-    static int16_t max_altitude = 0;
-    static int16_t min_altitude = 0;
+    static int16_t max_altitude = HOTT_OFFSET_ALTITUDE;
+    static int16_t min_altitude = HOTT_OFFSET_ALTITUDE;
 
     // Altitude
-    (uint16_t &)_hott_vario_msg.altitude_L = get_altitude_rel();
+    (int16_t &)_hott_vario_msg.altitude_L = HOTT_OFFSET_ALTITUDE + get_altitude_rel();
 
     // Altitude Max
     if ((int16_t &)_hott_vario_msg.altitude_L > max_altitude && _armed) { //calc only in ARMED mode
         max_altitude = (int16_t &)_hott_vario_msg.altitude_L;
     }
-    (int16_t &)_hott_vario_msg.altitude_max_L = 500 + (max_altitude / 100);
+    (int16_t &)_hott_vario_msg.altitude_max_L = max_altitude;
 
     // Altitude Min
     if ((int16_t &)_hott_vario_msg.altitude_L < min_altitude && _armed) { //calc only in ARMED mode
         min_altitude = (int16_t &)_hott_vario_msg.altitude_L;
     }
-    (int16_t &)_hott_vario_msg.altitude_min_L = 500 + (min_altitude / 100);
+    (int16_t &)_hott_vario_msg.altitude_min_L = min_altitude;
 
     // Climbrate
     (int16_t &)_hott_vario_msg.climbrate_L    = 30000 + _climbrate1s;

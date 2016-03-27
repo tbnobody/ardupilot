@@ -75,7 +75,7 @@ private:
     void eam_check_main_power(void);
 
     // get_altitude_rel - get relative altitude from ground
-    uint16_t get_altitude_rel();
+    int16_t get_altitude_rel();
 
     AP_AHRS &_ahrs;                         // reference to attitude estimate
     AP_BattMonitor &_battery;               // reference to battery monitor object
