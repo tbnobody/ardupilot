@@ -42,20 +42,28 @@ private:
         float step_size;
     };
 
+    // clear_screen - removes all the content by adding blanks to screen buffer
     void clear_screen();
 
+    // print_word - insert content into the screen buffer
     void print_word(uint8_t pos, char const *text, bool inverted);
     
+    // print_page - renders a page of parameters/values
     uint8_t print_page(float param_value_new);
     
+    // perform_navigation - handles key press events as required for navigation
     void perform_navigation(uint8_t key, uint8_t param_id, float &param_value_new, uint8_t params_per_page);
     
+    // perform_edit - handles key press events as required for editing values
     void perform_edit(uint8_t key, uint8_t param_id, float &param_value_new);
     
+    // get_param_as_float - get parameter and render it as float
     float get_param_as_float(const char *key);
     
+    // get_param_as_char - get parameter and render it as char
     void get_param_as_char(const char *key, char *buffer);
     
+    // get_value_as_char - renders a given value with format of the given parameter
     void get_value_as_char(const char *key, char *buffer, float value);
 
     HOTT_TEXTMODE_MSG &_msg;
