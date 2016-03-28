@@ -394,7 +394,7 @@ void AP_HoTT_Telem::update_gps_data()
     }
 
     // Altitude meters above ground
-    (int16_t &)_hott_gps_msg.altitude_L = HOTT_OFFSET_ALTITUDE + get_altitude_rel();
+    (uint16_t &)_hott_gps_msg.altitude_L = HOTT_OFFSET_ALTITUDE + get_altitude_rel();
 
     // Flight Direction
     _hott_gps_msg.flight_direction = gps.ground_course_cd() / 200; // in 2* steps
@@ -461,7 +461,7 @@ void AP_HoTT_Telem::update_gps_data()
     _hott_gps_msg.angle_nick = _ahrs.pitch_sensor / 200;
 
     // Climbrate
-    (int16_t &)_hott_gps_msg.climbrate_L = 30000 + _climbrate1s;
+    (int16_t &)_hott_gps_msg.climbrate_L = HOTT_OFFSET_CLIMBRATE + _climbrate1s;
     _hott_gps_msg.climbrate3s            = 120   + (_climbrate3s / 100);  // 0 m/3s
 
     // GPS Time
@@ -489,10 +489,10 @@ void AP_HoTT_Telem::update_eam_data()
 
     // Climbrate
     _hott_eam_msg.climbrate3s             = 120   + (_climbrate3s / 100);  // 0 m/3s using filtered data here
-    (uint16_t &)_hott_eam_msg.climbrate_L = 30000 + _climbrate1s;
+    (uint16_t &)_hott_eam_msg.climbrate_L = HOTT_OFFSET_CLIMBRATE + _climbrate1s;
 
     // Altitude
-    (int16_t &)_hott_eam_msg.altitude_L = HOTT_OFFSET_ALTITUDE + get_altitude_rel();
+    (uint16_t &)_hott_eam_msg.altitude_L = HOTT_OFFSET_ALTITUDE + get_altitude_rel();
 
     // Electric time. Time the APM is ARMED
     _hott_eam_msg.electric_min = _electric_time / 60;
@@ -502,7 +502,8 @@ void AP_HoTT_Telem::update_eam_data()
     (uint16_t &)_hott_eam_msg.speed_L = ((float)((gps.ground_speed()) * 3.6));
 
     // Temperature
-    _hott_eam_msg.temp1 = 20 + _barometer.get_temperature();
+    _hott_eam_msg.temp1 = HOTT_OFFSET_TEMPERATURE + _barometer.get_temperature();
+    _hott_eam_msg.temp2 = HOTT_OFFSET_TEMPERATURE;
 
     // Check alarms
     _hott_eam_msg.alarm_invers1 = 0;
@@ -531,24 +532,24 @@ void AP_HoTT_Telem::update_vario_data()
     static int16_t min_altitude = HOTT_OFFSET_ALTITUDE;
 
     // Altitude
-    (int16_t &)_hott_vario_msg.altitude_L = HOTT_OFFSET_ALTITUDE + get_altitude_rel();
+    (uint16_t &)_hott_vario_msg.altitude_L = HOTT_OFFSET_ALTITUDE + get_altitude_rel();
 
     // Altitude Max
     if ((int16_t &)_hott_vario_msg.altitude_L > max_altitude && _armed) { //calc only in ARMED mode
         max_altitude = (int16_t &)_hott_vario_msg.altitude_L;
     }
-    (int16_t &)_hott_vario_msg.altitude_max_L = max_altitude;
+    (uint16_t &)_hott_vario_msg.altitude_max_L = max_altitude;
 
     // Altitude Min
     if ((int16_t &)_hott_vario_msg.altitude_L < min_altitude && _armed) { //calc only in ARMED mode
         min_altitude = (int16_t &)_hott_vario_msg.altitude_L;
     }
-    (int16_t &)_hott_vario_msg.altitude_min_L = min_altitude;
+    (uint16_t &)_hott_vario_msg.altitude_min_L = min_altitude;
 
     // Climbrate
-    (int16_t &)_hott_vario_msg.climbrate_L    = 30000 + _climbrate1s;
-    (int16_t &)_hott_vario_msg.climbrate3s_L  = 30000 + _climbrate3s;
-    (int16_t &)_hott_vario_msg.climbrate10s_L = 30000 + _climbrate10s;
+    (int16_t &)_hott_vario_msg.climbrate_L    = HOTT_OFFSET_CLIMBRATE + _climbrate1s;
+    (int16_t &)_hott_vario_msg.climbrate3s_L  = HOTT_OFFSET_CLIMBRATE + _climbrate3s;
+    (int16_t &)_hott_vario_msg.climbrate10s_L = HOTT_OFFSET_CLIMBRATE + _climbrate10s;
 
     // Compass
     _hott_vario_msg.compass_direction = ToDeg(_ahrs.get_compass()->calculate_heading(_ahrs.get_rotation_body_to_ned())) / 2;

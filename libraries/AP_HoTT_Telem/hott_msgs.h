@@ -55,6 +55,8 @@ struct HOTT_TEXTMODE_MSG {
 
 /* Offsets */
 #define HOTT_OFFSET_ALTITUDE 500
+#define HOTT_OFFSET_CLIMBRATE 30000
+#define HOTT_OFFSET_TEMPERATURE 20
 
 /* General Air Module (GAM) constants. Graupner #33611 */
 #define GAM_SENSOR_ID           0x8d
