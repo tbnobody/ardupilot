@@ -373,12 +373,14 @@ void AP_HoTT_Telem::process_climbrate(int16_t current_altitude)
     _climbrate10s = altitude_data[x] - altitude_data[next_data];
 }
 
+// get_altitude_rel - returns the current height relative to the home position
+//  all values are measured in cm
 int16_t AP_HoTT_Telem::get_altitude_rel()
 {
     if (_current_loc.flags.relative_alt) {
-        return (_current_loc.alt / 100);
+        return _current_loc.alt;
     } else {
-        return ((_current_loc.alt - _ahrs.get_home().alt) / 100);
+        return _current_loc.alt - _ahrs.get_home().alt;
     }
 }
 
@@ -394,10 +396,10 @@ void AP_HoTT_Telem::update_gps_data()
     }
 
     // Altitude meters above ground
-    (uint16_t &)_hott_gps_msg.altitude_L = HOTT_OFFSET_ALTITUDE + get_altitude_rel();
+    (uint16_t &)_hott_gps_msg.altitude_L = HOTT_OFFSET_ALTITUDE + get_altitude_rel() / 100;
 
     // Flight Direction
-    _hott_gps_msg.flight_direction = gps.ground_course_cd() / 200; // in 2* steps
+    _hott_gps_msg.flight_direction = _ahrs.yaw_sensor / 200; // in 2* steps
 
     // Ground Speed
     (uint16_t &)_hott_gps_msg.gps_speed_L = (uint16_t)((float)((gps.ground_speed()) * 3.6));
@@ -492,7 +494,7 @@ void AP_HoTT_Telem::update_eam_data()
     (uint16_t &)_hott_eam_msg.climbrate_L = HOTT_OFFSET_CLIMBRATE + _climbrate1s;
 
     // Altitude
-    (uint16_t &)_hott_eam_msg.altitude_L = HOTT_OFFSET_ALTITUDE + get_altitude_rel();
+    (uint16_t &)_hott_eam_msg.altitude_L = HOTT_OFFSET_ALTITUDE + get_altitude_rel() / 100;
 
     // Electric time. Time the APM is ARMED
     _hott_eam_msg.electric_min = _electric_time / 60;
@@ -532,7 +534,7 @@ void AP_HoTT_Telem::update_vario_data()
     static int16_t min_altitude = HOTT_OFFSET_ALTITUDE;
 
     // Altitude
-    (uint16_t &)_hott_vario_msg.altitude_L = HOTT_OFFSET_ALTITUDE + get_altitude_rel();
+    (uint16_t &)_hott_vario_msg.altitude_L = HOTT_OFFSET_ALTITUDE + get_altitude_rel() / 100;
 
     // Altitude Max
     if ((int16_t &)_hott_vario_msg.altitude_L > max_altitude && _armed) { //calc only in ARMED mode
