@@ -51,6 +51,10 @@ public:
         return _base_port;
     }
 
+    bool use_rtscts(void) const {
+        return _use_rtscts;
+    }
+    
     // simulated airspeed, sonar and battery monitor
     uint16_t sonar_pin_value;    // pin 0
     uint16_t airspeed_pin_value; // pin 1
@@ -61,12 +65,13 @@ public:
     const char *get_client_address(void) const { return _client_address; }
 
     // paths for UART devices
-    const char *_uart_path[5] {
+    const char *_uart_path[6] {
         "tcp:0:wait",
         "GPS1",
         "tcp:2",
         "tcp:3",
-        "GPS2"
+        "GPS2",
+        "tcp:4",
     };
     
 private:
@@ -156,6 +161,8 @@ private:
 
     bool _synthetic_clock_mode;
 
+    bool _use_rtscts;
+    
     const char *_fdm_address;
 
     // delay buffer variables

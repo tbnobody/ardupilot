@@ -2,6 +2,9 @@ TOOLCHAIN = NATIVE
 
 include $(MK_DIR)/find_tools.mk
 
+# Hardcoded libraries/AP_Common/missing/cmath defines in "make" to retain the current behavior
+EXTRAFLAGS += -DHAVE_CMATH_ISFINITE -DNEED_CMATH_ISFINITE_STD_NAMESPACE
+
 #
 # Tool options
 #
@@ -10,7 +13,7 @@ DEFINES        +=   -DSKETCH=\"$(SKETCH)\" -DSKETCHNAME="\"$(SKETCH)\"" -DSKETCH
 DEFINES        +=   $(EXTRAFLAGS)
 DEFINES        +=   -DCONFIG_HAL_BOARD=$(HAL_BOARD) -DCONFIG_HAL_BOARD_SUBTYPE=$(HAL_BOARD_SUBTYPE)
 WARNFLAGS       =   -Wall -Wextra -Wformat -Wshadow -Wpointer-arith -Wcast-align \
-                    -Wlogical-op -Wwrite-strings -Wformat=2 -Wno-unused-parameter
+                    -Wlogical-op -Wwrite-strings -Wformat=2 -Wno-unused-parameter -Wno-unknown-pragmas
 WARNFLAGSCXX    = \
         -Wno-missing-field-initializers \
         -Wno-reorder \
@@ -31,10 +34,10 @@ COPTS           =   -ffunction-sections -fdata-sections -fsigned-char
 ASOPTS          =   -x assembler-with-cpp 
 
 # features: TODO detect dependecy and make them optional
-HAVE_LTTNG=
+HAVE_LTTNG_UST=
 
-ifeq ($(HAVE_LTTNG),1)
-DEFINES        += -DPERF_LTTNG=1
+ifeq ($(HAVE_LTTNG_UST),1)
+DEFINES        += -DHAVE_LTTNG_UST=1
 LIBS           += -llttng-ust -ldl
 endif
 
@@ -59,7 +62,7 @@ ifneq ($(SYSTYPE),Darwin)
 LDFLAGS        +=   -Wl,--gc-sections -Wl,-Map -Wl,$(SKETCHMAP)
 endif
 
-LIBS ?= -lm -pthread
+LIBS ?= -lm -lrt -pthread
 ifneq ($(findstring CYGWIN, $(SYSTYPE)),)
 LIBS += -lwinmm
 endif

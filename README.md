@@ -7,23 +7,23 @@
 [![Build Travis](https://travis-ci.org/ArduPilot/ardupilot.svg?branch=master)](https://travis-ci.org/ArduPilot/ardupilot)
 
 ### The ArduPilot project is made up of: ###
->>ArduCopter (or APM:Copter) : [code](https://github.com/ArduPilot/ardupilot/tree/master/ArduCopter), [wiki](http://copter.ardupilot.com)
+>>ArduCopter (or APM:Copter) : [code](https://github.com/ArduPilot/ardupilot/tree/master/ArduCopter), [wiki](http://ardupilot.org/copter/index.html)
 
->>ArduPlane (or APM:Plane) : [code](https://github.com/ArduPilot/ardupilot/tree/master/ArduPlane), [wiki](http://plane.ardupilot.com)
+>>ArduPlane (or APM:Plane) : [code](https://github.com/ArduPilot/ardupilot/tree/master/ArduPlane), [wiki](http://ardupilot.org/plane/index.html)
 
->>ArduRover (or APMrover2) : [code](https://github.com/ArduPilot/ardupilot/tree/master/APMrover2), [wiki](http://rover.ardupilot.com)
+>>ArduRover (or APMrover2) : [code](https://github.com/ArduPilot/ardupilot/tree/master/APMrover2), [wiki](http://ardupilot.org/rover/index.html)
 
->>Antenna Tracker : [code](https://github.com/ArduPilot/ardupilot/tree/master/AntennaTracker), [wiki](http://antennatracker.ardupilot.com)
+>>Antenna Tracker : [code](https://github.com/ArduPilot/ardupilot/tree/master/AntennaTracker), [wiki](http://ardupilot.org/antennatracker/index.html)
 
 ### User Support & Discussion Forums ###
->>APM Forum: [http://ardupilot.com/forum/index.php](http://ardupilot.com/forum/index.php)
+>>Support Forum: [http://discuss.ardupilot.org/](http://discuss.ardupilot.org/)
 
->>Community Site: [http://diydrones.com](http://diydrones.com)
+>>Community Site: [http://ardupilot.org](http://ardupilot.org)
 
 ### Developer Information ###
 >>Github repository: [https://github.com/ArduPilot/ardupilot](https://github.com/ArduPilot/ardupilot)
 
->>Main developer wiki: [http://dev.ardupilot.com](http://dev.ardupilot.com)
+>>Main developer wiki: [http://dev.ardupilot.org](http://dev.ardupilot.org)
 
 >>Developer email group: drones-discuss@googlegroups.com
 
@@ -41,13 +41,13 @@
 >>For information on the foundation please visit https://www.dronecode.org and https://github.com/Dronecode for further information or contact celder@dronecode.org
 
 ### How To Get Involved ###
->>The ArduPilot project is open source and we encourage participation and code contributions: [guidelines for contributors to the ardupilot codebase](http://dev.ardupilot.com/wiki/guidelines-for-contributors-to-the-apm-codebase)
+>>The ArduPilot project is open source and we encourage participation and code contributions: [guidelines for contributors to the ardupilot codebase](http://dev.ardupilot.org/wiki/guidelines-for-contributors-to-the-apm-codebase)
 
->>We have an active group of Beta Testers especially for ArduCopter to help us find bugs: [release procedures](http://dev.ardupilot.com/wiki/release-procedures)
+>>We have an active group of Beta Testers especially for ArduCopter to help us find bugs: [release procedures](http://dev.ardupilot.org/wiki/release-procedures)
 
 >>Desired Enhancements and Bugs can be posted to the [issues list](https://github.com/ArduPilot/ardupilot/issues).
 
->>Helping other users with log analysis on [diydrones.com](http://www.diydrones.com) and the [APM forums ](http://ardupilot.com/forum/index.php) is always appreciated:
+>>Helping other users with log analysis on [http://discuss.ardupilot.org/](http://discuss.ardupilot.org/) is always appreciated:
 
 >>There is a group of wiki editors as well in case documentation is your thing: ardu-wiki-editors@googlegroups.com
 
@@ -61,7 +61,7 @@
 ### Maintainers ###
 >> Ardupilot is comprised of several parts, vehicles and boards. The list below
 >> contains the people that regularly contribute to the project and are responsible
->> for reviewing patches on their specific area. See [CONTRIBUTING.md](CONTRIBUTING.md)
+>> for reviewing patches on their specific area. See [CONTRIBUTING.md](.github/CONTRIBUTING.md)
 >> for more information.
 >>
 >> - [Andrew Tridgell](https://github.com/tridge)
@@ -81,6 +81,7 @@
 >>   - ***Subsystem***: Linux
 >> - [Peter Barker](https://github.com/peterbarker)
 >>   - ***Subsystem***: DataFlash
+>>   - ***Subsystem***: Tools
 >> - [Michael du Breuil](https://github.com/WickedShell)
 >>   - ***Subsystem***: uBlox GPS
 >> - [Víctor Mayoral Vilches](https://github.com/vmayoral)
@@ -89,12 +90,8 @@
 >>   - ***Board***: BBBmini
 >> - [Georgii Staroselskii](https://github.com/staroselskii)
 >>   - ***Board***: NavIO
->> - [Víctor Mayoral Vilches](https://github.com/vmayoral)
->>   - ***Board***: Erle-Brain 2
 >> - [Emile Castelnuovo](https://github.com/emilecastelnuovo)
 >>   - ***Board***: VRBrain
->> - [Mike McCauley](#)
->>   - ***Board***: Flymaple
 >> - [Julien BERAUD](https://github.com/jberaud)
 >>   - ***Board***: Bebop & Bebop 2
 >> - [Pritam Ghanghas](https://github.com/pritamghanghas)

@@ -20,6 +20,7 @@
 #include "SIM_Rover.h"
 
 #include <string.h>
+#include <stdio.h>
 
 namespace SITL {
 
@@ -37,6 +38,7 @@ SimRover::SimRover(const char *home_str, const char *frame_str) :
     skid_steering = strstr(frame_str, "skid") != NULL;
 
     if (skid_steering) {
+        printf("SKID Steering Rover Simulation Started\n");
         // these are taken from a 6V wild thumper with skid steering,
         // with a sabertooth controller
         max_accel = 14;
@@ -54,7 +56,7 @@ float SimRover::turn_circle(float steering)
     if (fabsf(steering) < 1.0e-6) {
         return 0;
     }
-    return turning_circle * sinf(radians(35)) / sinf(radians(steering*35));
+    return turning_circle * sinf(radians(max_wheel_turn)) / sinf(radians(steering*max_wheel_turn));
 }
 
 /*

@@ -25,6 +25,7 @@
 #pragma once
 
 #include "AP_GPS.h"
+#include "GPS_Backend.h"
 #include "AP_GPS_MTK_Common.h"
 
 class AP_GPS_MTK : public AP_GPS_Backend {
@@ -71,7 +72,7 @@ private:
     // Receive buffer
     union PACKED {
         diyd_mtk_msg msg;
-        uint8_t bytes[];
+        uint8_t bytes[0];
     } _buffer;
 
     // Buffer parse & GPS state update

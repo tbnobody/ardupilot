@@ -15,6 +15,7 @@
 
 #include <SITL/SIM_Multicopter.h>
 #include <SITL/SIM_Helicopter.h>
+#include <SITL/SIM_SingleCopter.h>
 #include <SITL/SIM_Plane.h>
 #include <SITL/SIM_QuadPlane.h>
 #include <SITL/SIM_Rover.h>
@@ -25,6 +26,7 @@
 #include <SITL/SIM_Tracker.h>
 #include <SITL/SIM_Balloon.h>
 #include <SITL/SIM_FlightAxis.h>
+#include <SITL/SIM_Calibration.h>
 
 extern const AP_HAL::HAL& hal;
 
@@ -65,15 +67,20 @@ static const struct {
     Aircraft *(*constructor)(const char *home_str, const char *frame_str);
 } model_constructors[] = {
     { "quadplane",          QuadPlane::create },
+    { "firefly",            QuadPlane::create },
     { "+",                  MultiCopter::create },
     { "quad",               MultiCopter::create },
     { "copter",             MultiCopter::create },
     { "x",                  MultiCopter::create },
     { "hexa",               MultiCopter::create },
     { "octa",               MultiCopter::create },
+    { "tri",                MultiCopter::create },
+    { "y6",                 MultiCopter::create },
     { "heli",               Helicopter::create },
     { "heli-dual",          Helicopter::create },
     { "heli-compound",      Helicopter::create },
+    { "singlecopter",       SingleCopter::create },
+    { "coaxcopter",         SingleCopter::create },
     { "rover",              SimRover::create },
     { "crrcsim",            CRRCSim::create },
     { "jsbsim",             JSBSim::create },
@@ -83,6 +90,7 @@ static const struct {
     { "tracker",            Tracker::create },
     { "balloon",            Balloon::create },
     { "plane",              Plane::create },
+    { "calibration",        Calibration::create },
 };
 
 void SITL_State::_parse_command_line(int argc, char * const argv[])
@@ -122,7 +130,9 @@ void SITL_State::_parse_command_line(int argc, char * const argv[])
         CMDLINE_UARTC,
         CMDLINE_UARTD,
         CMDLINE_UARTE,
+        CMDLINE_UARTF,
         CMDLINE_ADSB,
+        CMDLINE_RTSCTS,
         CMDLINE_DEFAULTS
     };
 
@@ -147,6 +157,7 @@ void SITL_State::_parse_command_line(int argc, char * const argv[])
         {"adsb",            false,  0, CMDLINE_ADSB},
         {"autotest-dir",    true,   0, CMDLINE_AUTOTESTDIR},
         {"defaults",        true,   0, CMDLINE_DEFAULTS},
+        {"rtscts",          false,  0, CMDLINE_RTSCTS},
         {0, false, 0, 0}
     };
 
@@ -199,6 +210,9 @@ void SITL_State::_parse_command_line(int argc, char * const argv[])
         case CMDLINE_ADSB:
             enable_ADSB = true;
             break;
+        case CMDLINE_RTSCTS:
+            _use_rtscts = true;
+            break;
         case CMDLINE_AUTOTESTDIR:
             autotest_dir = strdup(gopt.optarg);
             break;
@@ -211,6 +225,7 @@ void SITL_State::_parse_command_line(int argc, char * const argv[])
         case CMDLINE_UARTC:
         case CMDLINE_UARTD:
         case CMDLINE_UARTE:
+        case CMDLINE_UARTF:
             _uart_path[opt - CMDLINE_UARTA] = gopt.optarg;
             break;
             
@@ -235,6 +250,10 @@ void SITL_State::_parse_command_line(int argc, char * const argv[])
             printf("Started model %s at %s at speed %.1f\n", model_str, home_str, speedup);
             break;
         }
+    }
+    if (sitl_model == nullptr) {
+        printf("Vehicle model (%s) not found\n", model_str);
+        exit(1);
     }
 
     fprintf(stdout, "Starting sketch '%s'\n", SKETCH);

@@ -210,6 +210,10 @@ bool AP_Arming::ins_checks(bool report)
                      */
                     threshold *= 3;
                 }
+
+                // EKF is less sensitive to Z-axis error
+                vec_diff.z *= 0.5f;
+
                 if (vec_diff.length() <= threshold) {
                     last_accel_pass_ms[i] = AP_HAL::millis();
                 }
@@ -340,8 +344,9 @@ bool AP_Arming::gps_checks(bool report)
         if (first_unconfigured != AP_GPS::GPS_ALL_CONFIGURED) {
             if (report) {
                 GCS_MAVLINK::send_statustext_all(MAV_SEVERITY_CRITICAL,
-                                                 "PreArm: GPS %d has not been fully configured",
-                                                  first_unconfigured);
+                                                 "PreArm: GPS %d failing configuration checks",
+                                                  first_unconfigured + 1);
+                gps.broadcast_first_configuration_failure_reason();
             }
 #if CONFIG_HAL_BOARD != HAL_BOARD_SITL
             return false;
@@ -453,7 +458,7 @@ bool AP_Arming::pre_arm_checks(bool report)
     return ret;
 }
 
-//returns true if arming occured successfully
+//returns true if arming occurred successfully
 bool AP_Arming::arm(uint8_t method)
 {
     if (armed) { //already armed

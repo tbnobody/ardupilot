@@ -23,6 +23,7 @@
 #pragma once
 
 #include "AP_GPS.h"
+#include "GPS_Backend.h"
 #include "AP_GPS_MTK_Common.h"
 
 #define MTK_GPS_REVISION_V16  16
@@ -77,6 +78,6 @@ private:
     // Receive buffer
     union {
         diyd_mtk_msg msg;
-        uint8_t bytes[];
+        uint8_t bytes[0];
     } _buffer;
 };

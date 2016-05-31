@@ -20,7 +20,7 @@ public:
 	// Update the internal state of the height and height rate estimator
 	// Update of the inertial speed rate estimate internal state
 	// Should be called at 50Hz or faster
-	virtual void update_50hz(float height_above_field) = 0;
+	virtual void update_50hz(void) = 0;
 
 	/**
 	   stages of flight so the altitude controller can choose to
@@ -59,17 +59,17 @@ public:
 	// Rate of change of velocity along X body axis in m/s^2
     virtual float get_VXdot(void)=0;
 	
-	// log data on internal state of the controller. Called at 10Hz
-	virtual void log_data(DataFlash_Class &dataflash, uint8_t msgid) = 0;
-
 	// return current target airspeed
 	virtual float get_target_airspeed(void) const = 0;
 
 	// return maximum climb rate
 	virtual float get_max_climbrate(void) const = 0;
 
-	// return landing sink rate
-	virtual float get_land_sinkrate(void) const = 0;
+    // return landing sink rate
+    virtual float get_land_sinkrate(void) const = 0;
+
+    // return landing airspeed
+    virtual float get_land_airspeed(void) const = 0;
 
 	// set path_proportion accessor
     virtual void set_path_proportion(float path_proportion) = 0;

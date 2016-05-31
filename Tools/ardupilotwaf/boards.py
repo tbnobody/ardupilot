@@ -5,6 +5,7 @@ from collections import OrderedDict
 import sys
 
 import waflib
+from waflib.Configure import conf
 
 _board_classes = {}
 
@@ -31,6 +32,7 @@ class Board:
     def configure(self, cfg):
         cfg.env.TOOLCHAIN = self.toolchain
         cfg.load('toolchain')
+        cfg.load('cxx_checks')
 
         env = waflib.ConfigSet.ConfigSet()
         self.configure_env(cfg, env)
@@ -52,10 +54,16 @@ class Board:
             else:
                 cfg.env[k] = val
 
+        cfg.ap_common_checks()
+
     def configure_env(self, cfg, env):
         # Use a dictionary instead of the convetional list for definitions to
         # make easy to override them. Convert back to list before consumption.
         env.DEFINES = {}
+
+        env.prepend_value('INCLUDES', [
+            cfg.srcnode.find_dir('libraries/AP_Common/missing').abspath()
+        ])
 
         env.CFLAGS += [
             '-ffunction-sections',
@@ -72,6 +80,7 @@ class Board:
             '-Wno-missing-field-initializers',
             '-Wno-unused-parameter',
             '-Wno-redundant-decls',
+            '-Wno-unknown-pragmas',
         ]
 
         if 'clang' in cfg.env.COMPILER_CC:
@@ -82,8 +91,13 @@ class Board:
                 '-Wno-inconsistent-missing-override',
                 '-Wno-mismatched-tags',
                 '-Wno-gnu-variable-sized-type-not-at-end',
-                '-Wno-unknown-pragmas',
                 '-Wno-c++11-narrowing'
+            ]
+
+        if cfg.env.DEBUG:
+            env.CFLAGS += [
+                '-g',
+                '-O0',
             ]
 
         env.CXXFLAGS += [
@@ -105,6 +119,7 @@ class Board:
             '-Wno-missing-field-initializers',
             '-Wno-reorder',
             '-Wno-redundant-decls',
+            '-Wno-unknown-pragmas',
             '-Werror=format-security',
             '-Werror=array-bounds',
             '-Werror=uninitialized',
@@ -120,7 +135,6 @@ class Board:
                 '-Wno-inconsistent-missing-override',
                 '-Wno-mismatched-tags',
                 '-Wno-gnu-variable-sized-type-not-at-end',
-                '-Wno-unknown-pragmas',
                 '-Wno-c++11-narrowing'
             ]
         else:
@@ -128,12 +142,18 @@ class Board:
                 '-Werror=unused-but-set-variable'
             ]
 
+        if cfg.env.DEBUG:
+            env.CXXFLAGS += [
+                '-g',
+                '-O0',
+            ]
+
         env.LINKFLAGS += [
             '-Wl,--gc-sections',
         ]
 
     def build(self, bld):
-        pass
+        bld.ap_version_append_str('GIT_VERSION', bld.git_head_hash(short=True))
 
 Board = BoardMeta('Board', Board.__bases__, dict(Board.__dict__))
 
@@ -141,10 +161,13 @@ def get_boards_names():
     return sorted(list(_board_classes.keys()))
 
 _board = None
-def get_board(name):
+@conf
+def get_board(ctx):
     global _board
     if not _board:
-        _board = _board_classes[name]()
+        if not ctx.env.BOARD:
+            ctx.fatal('BOARD environment variable must be set before first call to get_board()')
+        _board = _board_classes[ctx.env.BOARD]()
     return _board
 
 # NOTE: Keeping all the board definitions together so we can easily
@@ -159,17 +182,28 @@ class sitl(Board):
             CONFIG_HAL_BOARD = 'HAL_BOARD_SITL',
             CONFIG_HAL_BOARD_SUBTYPE = 'HAL_BOARD_SUBTYPE_NONE',
         )
-        env.CXXFLAGS += [
-            '-O3',
-        ]
+
+        if not cfg.env.DEBUG:
+            env.CXXFLAGS += [
+                '-O3',
+            ]
+
         env.LIB += [
             'm',
         ]
+
+        cfg.check_librt(env)
+
         env.LINKFLAGS += ['-pthread',]
         env.AP_LIBRARIES += [
             'AP_HAL_SITL',
             'SITL',
         ]
+
+        if sys.platform == 'cygwin':
+            env.LIB += [
+                'winmm',
+            ]
 
 class linux(Board):
     def configure_env(self, cfg, env):
@@ -179,13 +213,20 @@ class linux(Board):
             CONFIG_HAL_BOARD = 'HAL_BOARD_LINUX',
             CONFIG_HAL_BOARD_SUBTYPE = 'HAL_BOARD_SUBTYPE_LINUX_NONE',
         )
-        env.CXXFLAGS += [
-            '-O3',
-        ]
+
+        if not cfg.env.DEBUG:
+            env.CXXFLAGS += [
+                '-O3',
+            ]
+
         env.LIB += [
             'm',
-            'rt',
         ]
+
+        cfg.check_librt(env)
+        cfg.check_lttng(env)
+        cfg.check_libiio(env)
+
         env.LINKFLAGS += ['-pthread',]
         env.AP_LIBRARIES = [
             'AP_HAL_Linux',
@@ -333,9 +374,6 @@ class px4(Board):
             CONFIG_HAL_BOARD = 'HAL_BOARD_PX4',
             HAVE_STD_NULLPTR_T = 0,
         )
-        env.prepend_value('INCLUDES', [
-            cfg.srcnode.find_dir('libraries/AP_Common/missing').abspath()
-        ])
         env.CXXFLAGS += [
             '-Wlogical-op',
             '-Wframe-larger-than=1300',
@@ -362,6 +400,8 @@ class px4(Board):
 
     def build(self, bld):
         super(px4, self).build(bld)
+        bld.ap_version_append_str('NUTTX_GIT_VERSION', bld.git_submodule_head_hash('PX4NuttX', short=True))
+        bld.ap_version_append_str('PX4_GIT_VERSION', bld.git_submodule_head_hash('PX4Firmware', short=True))
         bld.load('px4')
 
 class px4_v1(px4):

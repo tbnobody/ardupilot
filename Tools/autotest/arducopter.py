@@ -16,7 +16,6 @@ import random
 testdir=os.path.dirname(os.path.realpath(__file__))
 
 FRAME='+'
-TARGET='sitl'
 HOME=mavutil.location(-35.362938,149.165085,584,270)
 AVCHOME=mavutil.location(40.072842,-105.230575,1586,0)
 
@@ -362,8 +361,8 @@ def fly_stability_patch(mavproxy, mav, holdtime=30, maxaltchange=5, maxdistchang
     print("Holding loiter at %u meters for %u seconds" % (start_altitude, holdtime))
 
     # cut motor 1 to 55% efficiency
-    print("Cutting motor 1 to 55% efficiency")
-    mavproxy.send('param set SIM_ENGINE_MUL 0.55\n')
+    print("Cutting motor 1 to 60% efficiency")
+    mavproxy.send('param set SIM_ENGINE_MUL 0.60\n')
 
     while get_sim_time(mav) < tstart + holdtime:
         m = mav.recv_match(type='VFR_HUD', blocking=True)
@@ -546,7 +545,7 @@ def fly_gps_glitch_loiter_test(mavproxy, mav, timeout=30, max_distance=20):
     return success
 
 # fly_gps_glitch_auto_test - fly mission and test reaction to gps glitch
-def fly_gps_glitch_auto_test(mavproxy, mav, timeout=30, max_distance=100):
+def fly_gps_glitch_auto_test(mavproxy, mav, timeout=120):
 
     # set-up gps glitch array
     glitch_lat = [0.0002996,0.0006958,0.0009431,0.0009991,0.0009444,0.0007716,0.0006221]
@@ -584,7 +583,6 @@ def fly_gps_glitch_auto_test(mavproxy, mav, timeout=30, max_distance=100):
     # record time and position
     tstart = get_sim_time(mav)
     tnow = tstart
-    start_pos = sim_location(mav)
 
     # initialise current glitch
     glitch_current = 0;
@@ -595,7 +593,7 @@ def fly_gps_glitch_auto_test(mavproxy, mav, timeout=30, max_distance=100):
     # record position for 30 seconds
     while glitch_current < glitch_num:
         tnow = get_sim_time(mav)
-        desired_glitch_num = int((tnow - tstart) * 2)
+        desired_glitch_num = int((tnow - tstart) * 2.2)
         if desired_glitch_num > glitch_current and glitch_current != -1:
             glitch_current = desired_glitch_num
             # apply next glitch
@@ -610,7 +608,7 @@ def fly_gps_glitch_auto_test(mavproxy, mav, timeout=30, max_distance=100):
     mavproxy.send('param set SIM_GPS_GLITCH_Y 0\n')
 
     # continue with the mission
-    ret = wait_waypoint(mav, 0, num_wp-1, timeout=500, mode='AUTO')
+    ret = wait_waypoint(mav, 0, num_wp-1, timeout=500)
 
     # wait for arrival back home
     m = mav.recv_match(type='VFR_HUD', blocking=True)
@@ -801,8 +799,12 @@ def fly_auto_test(mavproxy, mav):
     mavproxy.send('rc 3 1500\n')
 
     # fly the mission
-    ret = wait_waypoint(mav, 0, num_wp-1, timeout=500, mode='AUTO')
+    ret = wait_waypoint(mav, 0, num_wp-1, timeout=500)
 
+    # land if mission failed
+    if ret == False:
+        land(mavproxy, mav)
+    
     # set throttle to minimum
     mavproxy.send('rc 3 1000\n')
 
@@ -835,7 +837,7 @@ def fly_avc_test(mavproxy, mav):
     mavproxy.send('rc 3 1500\n')
 
     # fly the mission
-    ret = wait_waypoint(mav, 0, num_wp-1, timeout=500, mode='AUTO')
+    ret = wait_waypoint(mav, 0, num_wp-1, timeout=500)
 
     # set throttle to minimum
     mavproxy.send('rc 3 1000\n')
@@ -866,7 +868,7 @@ def fly_mission(mavproxy, mav, height_accuracy=-1, target_altitude=None):
     mavproxy.send('wp set 1\n')
     mavproxy.send('switch 4\n') # auto mode
     wait_mode(mav, 'AUTO')
-    ret = wait_waypoint(mav, 0, num_wp-1, timeout=500, mode='AUTO')
+    ret = wait_waypoint(mav, 0, num_wp-1, timeout=500)
     expect_msg = "Reached command #%u" % (num_wp-1)
     if (ret):
         mavproxy.expect(expect_msg)
@@ -905,7 +907,7 @@ def setup_rc(mavproxy):
     # zero throttle
     mavproxy.send('rc 3 1000\n')
 
-def fly_ArduCopter(viewerip=None, map=False):
+def fly_ArduCopter(binary, viewerip=None, map=False, valgrind=False):
     '''fly ArduCopter in SIL
 
     you can pass viewerip as an IP address to optionally send fg and
@@ -913,23 +915,23 @@ def fly_ArduCopter(viewerip=None, map=False):
     '''
     global homeloc
 
-    if TARGET != 'sitl':
-        util.build_SIL('ArduCopter', target=TARGET)
-
     home = "%f,%f,%u,%u" % (HOME.lat, HOME.lng, HOME.alt, HOME.heading)
-    sil = util.start_SIL('ArduCopter', wipe=True, model='+', home=home, speedup=speedup_default)
+    sil = util.start_SIL(binary, wipe=True, model='+', home=home, speedup=speedup_default)
     mavproxy = util.start_MAVProxy_SIL('ArduCopter', options='--sitl=127.0.0.1:5501 --out=127.0.0.1:19550 --quadcopter')
     mavproxy.expect('Received [0-9]+ parameters')
 
     # setup test parameters
     mavproxy.send("param load %s/copter_params.parm\n" % testdir)
     mavproxy.expect('Loaded [0-9]+ parameters')
+    mavproxy.send("param set LOG_REPLAY 1\n")
+    mavproxy.send("param set LOG_DISARMED 1\n")
+    time.sleep(3)
 
     # reboot with new parameters
     util.pexpect_close(mavproxy)
     util.pexpect_close(sil)
 
-    sil = util.start_SIL('ArduCopter', model='+', home=home, speedup=speedup_default)
+    sil = util.start_SIL(binary, model='+', home=home, speedup=speedup_default, valgrind=valgrind)
     options = '--sitl=127.0.0.1:5501 --out=127.0.0.1:19550 --quadcopter --streamrate=5'
     if viewerip:
         options += ' --out=%s:14550' % viewerip
@@ -1240,9 +1242,10 @@ def fly_ArduCopter(viewerip=None, map=False):
     util.pexpect_close(mavproxy)
     util.pexpect_close(sil)
 
-    if os.path.exists('ArduCopter-valgrind.log'):
-        os.chmod('ArduCopter-valgrind.log', 0644)
-        shutil.copy("ArduCopter-valgrind.log", util.reltopdir("../buildlogs/ArduCopter-valgrind.log"))
+    valgrind_log = sil.valgrind_log_filepath()
+    if os.path.exists(valgrind_log):
+        os.chmod(valgrind_log, 0644)
+        shutil.copy(valgrind_log, util.reltopdir("../buildlogs/ArduCopter-valgrind.log"))
 
     # [2014/05/07] FC Because I'm doing a cross machine build (source is on host, build is on guest VM) I cannot hard link
     # This flag tells me that I need to copy the data out
@@ -1255,28 +1258,28 @@ def fly_ArduCopter(viewerip=None, map=False):
     return True
 
 
-def fly_CopterAVC(viewerip=None, map=False):
+def fly_CopterAVC(binary, viewerip=None, map=False, valgrind=False):
     '''fly ArduCopter in SIL for AVC2013 mission
     '''
     global homeloc
 
-    if TARGET != 'sitl':
-        util.build_SIL('ArduCopter', target=TARGET)
-
     home = "%f,%f,%u,%u" % (AVCHOME.lat, AVCHOME.lng, AVCHOME.alt, AVCHOME.heading)
-    sil = util.start_SIL('ArduCopter', wipe=True, model='heli', home=home, speedup=speedup_default)
+    sil = util.start_SIL(binary, wipe=True, model='heli', home=home, speedup=speedup_default)
     mavproxy = util.start_MAVProxy_SIL('ArduCopter', options='--sitl=127.0.0.1:5501 --out=127.0.0.1:19550')
     mavproxy.expect('Received [0-9]+ parameters')
 
     # setup test parameters
     mavproxy.send("param load %s/Helicopter.parm\n" % testdir)
     mavproxy.expect('Loaded [0-9]+ parameters')
+    mavproxy.send("param set LOG_REPLAY 1\n")
+    mavproxy.send("param set LOG_DISARMED 1\n")
+    time.sleep(3)
 
     # reboot with new parameters
     util.pexpect_close(mavproxy)
     util.pexpect_close(sil)
 
-    sil = util.start_SIL('ArduCopter', model='heli', home=home, speedup=speedup_default)
+    sil = util.start_SIL(binary, model='heli', home=home, speedup=speedup_default, valgrind=valgrind)
     options = '--sitl=127.0.0.1:5501 --out=127.0.0.1:19550 --streamrate=5'
     if viewerip:
         options += ' --out=%s:14550' % viewerip
@@ -1367,6 +1370,11 @@ def fly_CopterAVC(viewerip=None, map=False):
     mav.close()
     util.pexpect_close(mavproxy)
     util.pexpect_close(sil)
+
+    valgrind_log = sil.valgrind_log_filepath()
+    if os.path.exists(valgrind_log):
+        os.chmod(valgrind_log, 0644)
+        shutil.copy(valgrind_log, util.reltopdir("../buildlogs/Helicopter-valgrind.log"))
 
     if failed:
         print("FAILED: %s" % failed_test_msg)

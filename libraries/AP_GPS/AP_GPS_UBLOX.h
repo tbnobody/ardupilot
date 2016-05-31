@@ -22,7 +22,9 @@
 #pragma once
 
 #include <AP_HAL/AP_HAL.h>
+
 #include "AP_GPS.h"
+#include "GPS_Backend.h"
 
 /*
  *  try to put a UBlox into binary mode. This is in two parts. 
@@ -108,6 +110,7 @@ public:
         }
     }
 
+    void broadcast_configuration_failure_reason(void) const override;
 private:
     // u-blox UBX protocol essentials
     struct PACKED ubx_header {
@@ -381,7 +384,7 @@ private:
         ubx_rxm_rawx rxm_rawx;
 #endif
         ubx_ack_ack ack;
-        uint8_t bytes[];
+        uint8_t bytes[0];
     } _buffer;
 
     enum ubs_protocol_bytes {

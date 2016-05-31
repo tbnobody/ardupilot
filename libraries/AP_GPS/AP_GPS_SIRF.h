@@ -20,9 +20,11 @@
 //
 #pragma once
 
-#include <AP_HAL/AP_HAL.h>
 #include <AP_Common/AP_Common.h>
+#include <AP_HAL/AP_HAL.h>
+
 #include "AP_GPS.h"
+#include "GPS_Backend.h"
 
 #define SIRF_SET_BINARY "$PSRF100,0,38400,8,1,0*3C\r\n"
 
@@ -96,7 +98,7 @@ private:
     // Message buffer
     union {
         sirf_geonav nav;
-        uint8_t bytes[];
+        uint8_t bytes[0];
     } _buffer;
 
     bool        _parse_gps(void);

@@ -25,6 +25,7 @@
 #define CH_16 15
 #define CH_17 16
 #define CH_18 17
+#define CH_NONE 255
 #endif
 
 
@@ -101,10 +102,29 @@ public:
     virtual void     force_safety_off(void) {}
 
     /*
+      If we support async sends (px4), this will force it to be serviced immediately
+     */
+    virtual void     force_safety_no_wait(void) {}
+
+    /*
       setup scaling of ESC output for ESCs that can output a
       percentage of power (such as UAVCAN ESCs). The values are in
       microseconds, and represent minimum and maximum PWM values which
       will be used to convert channel writes into a percentage
      */
     virtual void     set_esc_scaling(uint16_t min_pwm, uint16_t max_pwm) {}
+
+    /*
+      enable SBUS out at the given rate
+     */
+    virtual bool     enable_sbus_out(uint16_t rate_gz) { return false; }
+    
+    /*
+      output modes. Allows for support of oneshot
+     */
+    enum output_mode {
+        MODE_PWM_NORMAL,
+        MODE_PWM_ONESHOT
+    };
+    virtual void    set_output_mode(enum output_mode mode) {}
 };

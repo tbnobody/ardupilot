@@ -1,6 +1,6 @@
 /// -*- tab-width: 4; Mode: C++; c-basic-offset: 4; indent-tabs-mode: nil -*-
 /*
-   Please contribute your ideas! See http://dev.ardupilot.com for details
+   Please contribute your ideas! See http://dev.ardupilot.org for details
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -27,7 +27,7 @@
 #include <AP_HAL/AP_HAL.h>
 #include <GCS_MAVLink/GCS_MAVLink.h>
 
-#define SERIALMANAGER_NUM_PORTS 5
+#define SERIALMANAGER_NUM_PORTS 6
 
  // console default baud rates and buffer sizes
 #ifdef HAL_SERIAL0_BAUD_DEFAULT
@@ -75,7 +75,8 @@ class AP_SerialManager {
 public:
 
     enum SerialProtocol {
-        SerialProtocol_Console = 0,
+        SerialProtocol_None = -1,
+        SerialProtocol_Console = 0, // unused
         SerialProtocol_MAVLink = 1,
         SerialProtocol_MAVLink2 = 2,    // do not use - use MAVLink and provide instance of 1
         SerialProtocol_FRSky_DPort = 3,
@@ -112,6 +113,10 @@ public:
     //  returns true if a channel is found, false if not
     bool get_mavlink_channel(enum SerialProtocol protocol, uint8_t instance, mavlink_channel_t &mav_chan) const;
 
+    // get_mavlink_protocol - provides the specific MAVLink protocol for a
+    // given channel, or SerialProtocol_None if not found
+    SerialProtocol get_mavlink_protocol(mavlink_channel_t mav_chan) const;
+    
     // set_blocking_writes_all - sets block_writes on or off for all serial channels
     void set_blocking_writes_all(bool blocking);
 

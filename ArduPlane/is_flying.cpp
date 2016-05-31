@@ -6,7 +6,7 @@
   is_flying and crash detection logic
  */
 
-#define CRASH_DETECTION_DELAY_MS            300
+#define CRASH_DETECTION_DELAY_MS            500
 #define IS_FLYING_IMPACT_TIMER_MS           3000
 
 /*
@@ -26,9 +26,12 @@ void Plane::update_is_flying_5Hz(void)
     // airspeed at least 75% of stall speed?
     bool airspeed_movement = ahrs.airspeed_estimate(&aspeed) && (aspeed >= (aparm.airspeed_min*0.75f));
 
-    if(arming.is_armed()) {
-        // when armed assuming flying and we need overwhelming evidence that we ARE NOT flying
 
+    if (quadplane.is_flying()) {
+        is_flying_bool = true;
+
+    } else if(arming.is_armed()) {
+        // when armed assuming flying and we need overwhelming evidence that we ARE NOT flying
         // short drop-outs of GPS are common during flight due to banking which points the antenna in different directions
         bool gps_lost_recently = (gps.last_fix_time_ms() > 0) && // we have locked to GPS before
                         (gps.status() < AP_GPS::GPS_OK_FIX_2D) && // and it's lost now
@@ -126,10 +129,6 @@ void Plane::update_is_flying_5Hz(void)
         isFlyingProbability = (0.85f * isFlyingProbability) + (0.15f * (float)is_flying_bool);
     }
 
-    if (quadplane.is_flying()) {
-        is_flying_bool = true;
-    }
-    
     /*
       update last_flying_ms so we always know how long we have not
       been flying for. This helps for crash detection and auto-disarm
@@ -170,6 +169,9 @@ void Plane::update_is_flying_5Hz(void)
 bool Plane::is_flying(void)
 {
     if (hal.util->get_soft_armed()) {
+        if (quadplane.is_flying_vtol()) {
+            return true;
+        }
         // when armed, assume we're flying unless we probably aren't
         return (isFlyingProbability >= 0.1f);
     }
@@ -197,16 +199,27 @@ void Plane::crash_detection_update(void)
     bool been_auto_flying = (auto_state.started_flying_in_auto_ms > 0) &&
                             (now_ms - auto_state.started_flying_in_auto_ms >= 2500);
 
-    if (!is_flying() && been_auto_flying)
+    if (!is_flying() && arming.is_armed())
     {
         switch (flight_stage)
         {
         case AP_SpdHgtControl::FLIGHT_TAKEOFF:
-        case AP_SpdHgtControl::FLIGHT_NORMAL:
-            if (!in_preLaunch_flight_stage()) {
+            if (g.takeoff_throttle_min_accel > 0 &&
+                    !throttle_suppressed) {
+                // if you have an acceleration holding back throttle, but you met the
+                // accel threshold but still not fying, then you either shook/hit the
+                // plane or it was a failed launch.
                 crashed = true;
+                crash_state.debounce_time_total_ms = CRASH_DETECTION_DELAY_MS;
             }
             // TODO: handle auto missions without NAV_TAKEOFF mission cmd
+            break;
+
+        case AP_SpdHgtControl::FLIGHT_NORMAL:
+            if (!in_preLaunch_flight_stage() && been_auto_flying) {
+                crashed = true;
+                crash_state.debounce_time_total_ms = CRASH_DETECTION_DELAY_MS;
+            }
             break;
 
         case AP_SpdHgtControl::FLIGHT_VTOL:
@@ -215,7 +228,10 @@ void Plane::crash_detection_update(void)
             break;
             
         case AP_SpdHgtControl::FLIGHT_LAND_APPROACH:
-            crashed = true;
+            if (been_auto_flying) {
+                crashed = true;
+                crash_state.debounce_time_total_ms = CRASH_DETECTION_DELAY_MS;
+            }
             // when altitude gets low, we automatically progress to FLIGHT_LAND_FINAL
             // so ground crashes most likely can not be triggered from here. However,
             // a crash into a tree would be caught here.
@@ -228,8 +244,10 @@ void Plane::crash_detection_update(void)
             // but go ahead and notify GCS and perform any additional post-crash actions.
             // Declare a crash if we are oriented more that 60deg in pitch or roll
             if (!crash_state.checkedHardLanding && // only check once
-                (fabsf(ahrs.roll_sensor) > 6000 || fabsf(ahrs.pitch_sensor) > 6000)) {
+                been_auto_flying &&
+                (labs(ahrs.roll_sensor) > 6000 || labs(ahrs.pitch_sensor) > 6000)) {
                 crashed = true;
+                crash_state.debounce_time_total_ms = CRASH_DETECTION_DELAY_MS;
 
                 // did we "crash" within 75m of the landing location? Probably just a hard landing
                 crashed_near_land_waypoint =
@@ -259,7 +277,7 @@ void Plane::crash_detection_update(void)
         // start timer
         crash_state.debounce_timer_ms = now_ms;
 
-    } else if ((now_ms - crash_state.debounce_timer_ms >= CRASH_DETECTION_DELAY_MS) && !crash_state.is_crashed) {
+    } else if ((now_ms - crash_state.debounce_timer_ms >= crash_state.debounce_time_total_ms) && !crash_state.is_crashed) {
         crash_state.is_crashed = true;
 
         if (g.crash_detection_enable == CRASH_DETECT_ACTION_BITMASK_DISABLED) {

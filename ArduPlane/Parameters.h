@@ -49,6 +49,7 @@ public:
         k_param_format_version = 0,
         k_param_software_type,
         k_param_num_resets,
+        k_param_NavEKF2,
 
         // Misc
         //
@@ -152,6 +153,8 @@ public:
         k_param_fence_retalt = 105,
         k_param_fence_autoenable,
         k_param_fence_ret_rally,
+        k_param_q_attitude_control,
+        k_param_takeoff_pitch_limit_reduction_sec,
 
         // 110: Telemetry control
         //
@@ -200,7 +203,7 @@ public:
         k_param_NavEKF,  // Extended Kalman Filter Inertial Navigation Group
         k_param_mission, // mission library
         k_param_serial_manager, // serial manager library
-        k_param_NavEKF2,  // EKF2
+        k_param_NavEKF2_old,  // deprecated
         k_param_land_pre_flare_alt,
         k_param_land_pre_flare_airspeed = 149,
 
@@ -271,6 +274,7 @@ public:
         k_param_long_fs_timeout,
         k_param_rc_13,
         k_param_rc_14,
+        k_param_tuning,
 
         //
         // 200: Feed-forward gains
@@ -283,6 +287,8 @@ public:
         k_param_quadplane,
         k_param_rtl_radius,
         k_param_land_then_servos_neutral,
+        k_param_rc_15,
+        k_param_rc_16,
 
         //
         // 210: flight modes
@@ -295,6 +301,8 @@ public:
         k_param_flight_mode5,
         k_param_flight_mode6,
         k_param_initial_mode,
+        k_param_land_slope_recalc_shallow_threshold,
+        k_param_land_slope_recalc_steep_threshold_to_abort,
 
         //
         // 220: Waypoint data
@@ -467,6 +475,8 @@ public:
     AP_Int8 land_abort_throttle_enable;
     AP_Float land_pre_flare_alt;
     AP_Float land_pre_flare_sec;
+    AP_Float land_slope_recalc_shallow_threshold;
+    AP_Float land_slope_recalc_steep_threshold_to_abort;
     AP_Int32 min_gndspeed_cm;
     AP_Int16 pitch_trim_cd;
     AP_Int16 FBWB_min_altitude_cm;
@@ -491,6 +501,7 @@ public:
     AP_Float takeoff_tdrag_speed1;
     AP_Float takeoff_rotate_speed;
     AP_Int8 takeoff_throttle_slewrate;
+    AP_Float takeoff_pitch_limit_reduction_sec;
     AP_Int8 land_throttle_slewrate;
     AP_Int8 level_roll_limit;
     AP_Int8 flapin_channel;
@@ -526,6 +537,8 @@ public:
     RC_Channel_aux rc_12;
     RC_Channel_aux rc_13;
     RC_Channel_aux rc_14;
+    RC_Channel_aux rc_15;
+    RC_Channel_aux rc_16;
     uint8_t _dummy;
 
     Parameters() :
@@ -545,6 +558,8 @@ public:
         rc_12                                   (CH_12),
         rc_13                                   (CH_13),
         rc_14                                   (CH_14),
+        rc_15                                   (CH_15),
+        rc_16                                   (CH_16),
         _dummy(0)
         {}
 };

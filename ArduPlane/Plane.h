@@ -1,13 +1,8 @@
 /// -*- tab-width: 4; Mode: C++; c-basic-offset: 4; indent-tabs-mode: nil -*-
-#pragma once
-
-#define THISFIRMWARE "ArduPlane V3.5.2"
-#define FIRMWARE_VERSION 3,5,2,FIRMWARE_VERSION_TYPE_OFFICIAL
-
 /*
-   Lead developer: Andrew Tridgell
- 
-   Authors:    Doug Weibel, Jose Julio, Jordi Munoz, Jason Short, Randy Mackay, Pat Hickey, John Arne Birkeland, Olivier Adler, Amilcar Lucas, Gregory Fletcher, Paul Riseborough, Brandon Jones, Jon Challinger, Tom Pittenger
+   Lead developer: Andrew Tridgell & Tom Pittenger
+
+   Authors:    Doug Weibel, Jose Julio, Jordi Munoz, Jason Short, Randy Mackay, Pat Hickey, John Arne Birkeland, Olivier Adler, Amilcar Lucas, Gregory Fletcher, Paul Riseborough, Brandon Jones, Jon Challinger
    Thanks to:  Chris Anderson, Michael Oborne, Paul Mather, Bill Premerlani, James Cohen, JB from rotorFX, Automatik, Fefenin, Peter Meister, Remzibi, Yury Smirnov, Sandro Benigno, Max Levine, Roberto Navoni, Lorenz Meier, Yury MonZon
 
    Please contribute your ideas! See http://dev.ardupilot.com for details
@@ -25,12 +20,13 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+#pragma once
 
 ////////////////////////////////////////////////////////////////////////////////
 // Header includes
 ////////////////////////////////////////////////////////////////////////////////
 
-#include <math.h>
+#include <cmath>
 #include <stdarg.h>
 #include <stdio.h>
 
@@ -60,7 +56,6 @@
 #include <APM_OBC/APM_OBC.h>
 #include <APM_Control/APM_Control.h>
 #include <APM_Control/AP_AutoTune.h>
-#include <GCS_MAVLink/GCS.h>
 #include <GCS_MAVLink/GCS_MAVLink.h>    // MAVLink GCS definitions
 #include <AP_SerialManager/AP_SerialManager.h>   // Serial manager library
 #include <AP_Mount/AP_Mount.h>           // Camera/Antenna mount
@@ -94,7 +89,9 @@
 #include <AP_Parachute/AP_Parachute.h>
 #include <AP_ADSB/AP_ADSB.h>
 
+#include "GCS_Mavlink.h"
 #include "quadplane.h"
+#include "tuning.h"
 
 // Configuration
 #include "config.h"
@@ -132,10 +129,11 @@ protected:
  */
 class Plane : public AP_HAL::HAL::Callbacks {
 public:
-    friend class GCS_MAVLINK;
+    friend class GCS_MAVLINK_Plane;
     friend class Parameters;
     friend class AP_Arming_Plane;
     friend class QuadPlane;
+    friend class AP_Tuning_Plane;
 
     Plane(void);
 
@@ -169,7 +167,7 @@ private:
     // notification object for LEDs, buzzers etc (parameter set to false disables external leds)
     AP_Notify notify;
 
-    DataFlash_Class DataFlash{FIRMWARE_STRING};
+    DataFlash_Class DataFlash;
 
     // has a log download started?
     bool in_log_download;
@@ -200,6 +198,7 @@ private:
         float initial_range;
         float correction;
         float initial_correction;
+        float last_stable_correction;
         uint32_t last_correction_time_ms;
         uint8_t in_range_count;
         float height_estimate;
@@ -255,7 +254,7 @@ private:
     // GCS selection
     AP_SerialManager serial_manager;
     const uint8_t num_gcs = MAVLINK_COMM_NUM_BUFFERS;
-    GCS_MAVLINK gcs[MAVLINK_COMM_NUM_BUFFERS];
+    GCS_MAVLINK_Plane gcs[MAVLINK_COMM_NUM_BUFFERS];
 
     // selected navigation controller
     AP_Navigation *nav_controller = &L1_controller;
@@ -343,6 +342,10 @@ private:
         uint32_t ch3_timer_ms;
         
         uint32_t last_valid_rc_ms;
+
+        //keeps track of the last valid rc as it relates to the AFS system
+        //Does not count rc inputs as valid if the standard failsafe is on
+        uint32_t AFS_last_valid_rc_ms;
     } failsafe;
 
     // A counter used to count down valid gps fixes to allow the gps estimate to settle
@@ -357,8 +360,8 @@ private:
     // Also used for flap deployment criteria.  Centimeters per second.
     int32_t target_airspeed_cm;
 
-    // The difference between current and desired airspeed.  Used in the pitch controller.  Centimeters per second.
-    float airspeed_error_cm;
+    // The difference between current and desired airspeed.  Used in the pitch controller.  Meters per second.
+    float airspeed_error;
 
     // An amount that the airspeed should be increased in auto modes based on the user positioning the
     // throttle stick in the top half of the range.  Centimeters per second.
@@ -404,6 +407,13 @@ private:
         uint32_t lock_timer_ms;
     } cruise_state;
 
+    struct {
+        uint32_t last_tkoff_arm_time;
+        uint32_t last_check_ms;
+        uint32_t last_report_ms;
+        bool launchTimerStarted;
+    } takeoff_state;
+    
     // ground steering controller state
     struct {
         // Direction held during phases of takeoff and landing centidegrees
@@ -428,6 +438,9 @@ private:
 
         // Flag to indicate if we have triggered pre-flare. This occurs when we have reached LAND_PF_ALT
         bool land_pre_flare:1;
+
+        // are we in auto and flight mode is approach || pre-flare || final (flare)
+        bool land_in_progress:1;
 
         // should we fly inverted?
         bool inverted_flight:1;
@@ -463,6 +476,9 @@ private:
         // Minimum pitch to hold during takeoff command execution.  Hundredths of a degree
         int16_t takeoff_pitch_cd;
 
+        // Begin leveling out the enforced takeoff pitch angle min at this height to reduce/eliminate overshoot
+        int32_t height_below_takeoff_to_level_off_cm;
+
         // the highest airspeed we have reached since entering AUTO. Used
         // to control ground takeoff
         float highest_airspeed;
@@ -494,11 +510,20 @@ private:
         // time stamp of when we start flying while in auto mode in milliseconds
         uint32_t started_flying_in_auto_ms;
 
+        // calculated approach slope during auto-landing: ((prev_WP_loc.alt - next_WP_loc.alt)*0.01f - aparm.land_flare_sec * sink_rate) / get_distance(prev_WP_loc, next_WP_loc)
+        float land_slope;
+
+        // same as land_slope but sampled once before a rangefinder changes the slope. This should be the original mission planned slope
+        float initial_land_slope;
+
         // barometric altitude at start of takeoff
         float baro_takeoff_alt;
 
-        // are we in VTOL mode?
+        // are we in VTOL mode in AUTO?
         bool vtol_mode:1;
+
+        // are we doing loiter mode as a VTOL?
+        bool vtol_loiter:1;
     } auto_state;
 
     struct {
@@ -514,6 +539,9 @@ private:
 
         // debounce timer
         uint32_t debounce_timer_ms;
+
+        // delay time for debounce to count to
+        uint32_t debounce_time_total_ms;
 
         // length of time impact_detected has been true. Times out after a few seconds. Used to clip isFlyingProbability
         uint32_t impact_timer_ms;
@@ -649,9 +677,6 @@ private:
     // The location of the active waypoint in Guided mode.
     struct Location guided_WP_loc {};
 
-    // special purpose command used only after mission completed to return vehicle to home or rally point
-    struct AP_Mission::Mission_Command auto_rtl_command;
-
     // Altitude control
     struct {
         // target altitude above sea level in cm. Used for barometric
@@ -680,23 +705,31 @@ private:
     // This is the time between calls to the DCM algorithm and is the Integration time for the gyros.
     float G_Dt = 0.02f;
 
-    // Performance monitoring
-    // Timer used to accrue data and trigger recording of the performanc monitoring log message
-    uint32_t perf_mon_timer = 0;
+    struct {
+        // Performance monitoring
+        // Timer used to accrue data and trigger recording of the performanc monitoring log message
+        uint32_t start_ms;
 
-    // The maximum and minimum main loop execution time recorded in the current performance monitoring interval
-    uint32_t G_Dt_max = 0;
-    uint32_t G_Dt_min = 0;
+        // The maximum and minimum main loop execution time recorded in the current performance monitoring interval
+        uint32_t G_Dt_max;
+        uint32_t G_Dt_min;
 
-    // System Timers
-    // Time in microseconds of start of main control loop
-    uint32_t fast_loopTimer_us = 0;
+        // System Timers
+        // Time in microseconds of start of main control loop
+        uint32_t fast_loopTimer_us;
 
-    // Number of milliseconds used in last main loop cycle
-    uint32_t delta_us_fast_loop = 0;
+        // Number of milliseconds used in last main loop cycle
+        uint32_t delta_us_fast_loop;
 
-    // Counter of main loop executions.  Used for performance monitoring and failsafe processing
-    uint16_t mainLoop_count = 0;
+        // Counter of main loop executions.  Used for performance monitoring and failsafe processing
+        uint16_t mainLoop_count;
+
+        // number of long loops
+        uint16_t num_long;
+
+        // accumulated lost log messages
+        uint32_t last_log_dropped;
+    } perf;
 
     // Camera/Antenna mount tracking and stabilisation stuff
 #if MOUNT == ENABLED
@@ -726,6 +759,11 @@ private:
     // support for quadcopter-plane
     QuadPlane quadplane{ahrs};
 
+    // support for transmitter tuning
+    AP_Tuning_Plane tuning;
+
+    static const struct LogStructure log_structure[];
+    
 #if CONFIG_HAL_BOARD == HAL_BOARD_PX4
     // the crc of the last created PX4Mixer
     int32_t last_mixer_crc = -1;
@@ -740,6 +778,7 @@ private:
     void send_extended_status1(mavlink_channel_t chan);
     void send_location(mavlink_channel_t chan);
     void send_nav_controller_output(mavlink_channel_t chan);
+    void send_position_target_global_int(mavlink_channel_t chan);
     void send_servo_out(mavlink_channel_t chan);
     void send_radio_out(mavlink_channel_t chan);
     void send_vfr_hud(mavlink_channel_t chan);
@@ -760,11 +799,11 @@ private:
     void gcs_retry_deferred(void);
 
     void do_erase_logs(void);
+    void Log_Write_Fast(void);
     void Log_Write_Attitude(void);
     void Log_Write_Performance();
     void Log_Write_Startup(uint8_t type);
     void Log_Write_Control_Tuning();
-    void Log_Write_TECS_Tuning(void);
     void Log_Write_Nav_Tuning();
     void Log_Write_Status();
     void Log_Write_Sonar();
@@ -787,6 +826,7 @@ private:
     int32_t get_RTL_altitude();
     float relative_altitude(void);
     int32_t relative_altitude_abs_cm(void);
+    float relative_ground_altitude(void);
     void set_target_altitude_current(void);
     void set_target_altitude_current_adjusted(void);
     void set_target_altitude_location(const Location &loc);
@@ -810,7 +850,7 @@ private:
     void set_guided_WP(void);
     void init_home();
     void update_home();
-    void do_RTL(void);
+    void do_RTL(int32_t alt);
     bool verify_takeoff();
     bool verify_loiter_unlim();
     bool verify_loiter_time();
@@ -819,7 +859,6 @@ private:
     bool verify_RTL();
     bool verify_continue_and_change_alt();
     bool verify_wait_delay();
-    bool verify_change_alt();
     bool verify_within_distance();
     bool verify_altitude_wait(const AP_Mission::Mission_Command &cmd);
     bool verify_vtol_takeoff(const AP_Mission::Mission_Command &cmd);
@@ -829,7 +868,6 @@ private:
     bool verify_loiter_heading(bool init);
     void log_picture();
     void exit_mission_callback();
-    void update_commands(void);
     void mavlink_delay(uint32_t ms);
     void read_control_switch();
     uint8_t readSwitch(void);
@@ -861,6 +899,7 @@ private:
     bool verify_land();
     void disarm_if_autoland_complete();
     void setup_landing_glide_slope(void);
+    void adjust_landing_slope_for_rangefinder_bump(void);
     bool jump_to_landing_sequence(void);
     float tecs_hgt_afe(void);
     void set_nav_controller(void);
@@ -873,6 +912,7 @@ private:
     void update_cruise();
     void update_fbwb_speed_height(void);
     void setup_turn_angle(void);
+    bool reached_loiter_target(void);
     bool print_buffer(char *&buf, uint16_t &buf_size, const char *fmt, ...);
     uint16_t create_mixer(char *buf, uint16_t buf_size, const char *filename);
     bool setup_failsafe_mixing(void);
@@ -885,7 +925,7 @@ private:
     void trim_control_surfaces();
     void trim_radio();
     bool rc_failsafe_active(void);
-    void init_barometer(void);
+    void init_barometer(bool full_calibration);
     void init_rangefinder(void);
     void read_rangefinder(void);
     void read_airspeed(void);
@@ -928,6 +968,7 @@ private:
     void takeoff_calc_roll(void);
     void takeoff_calc_pitch(void);
     int8_t takeoff_tail_hold(void);
+    int16_t get_takeoff_pitch_min_cd(void);
     void print_hit_enter();
     void ahrs_update();
     void update_speed_height(void);
@@ -975,7 +1016,8 @@ private:
     bool stick_mixing_enabled(void);
     void stabilize_roll(float speed_scaler);
     void stabilize_pitch(float speed_scaler);
-    void stick_mix_channel(RC_Channel *channel, int16_t &servo_out);
+    static void stick_mix_channel(RC_Channel *channel);
+    static void stick_mix_channel(RC_Channel *channel, int16_t &servo_out);
     void stabilize_stick_mixing_direct();
     void stabilize_stick_mixing_fbw();
     void stabilize_yaw(float speed_scaler);
@@ -987,7 +1029,8 @@ private:
     void throttle_slew_limit(int16_t last_throttle);
     void flap_slew_limit(int8_t &last_value, int8_t &new_value);
     bool suppress_throttle(void);
-    void channel_output_mixer(uint8_t mixing_type, int16_t &chan1_out, int16_t &chan2_out);
+    void channel_output_mixer(uint8_t mixing_type, int16_t & chan1, int16_t & chan2)const;
+    void channel_output_mixer(uint8_t mixing_type, RC_Channel* chan1, RC_Channel* chan2)const;
     void flaperon_update(int8_t flap_percent);
     bool start_command(const AP_Mission::Mission_Command& cmd);
     bool verify_command(const AP_Mission::Mission_Command& cmd);
@@ -1005,7 +1048,6 @@ private:
     void do_vtol_land(const AP_Mission::Mission_Command& cmd);
     bool verify_nav_wp(const AP_Mission::Mission_Command& cmd);
     void do_wait_delay(const AP_Mission::Mission_Command& cmd);
-    void do_change_alt(const AP_Mission::Mission_Command& cmd);
     void do_within_distance(const AP_Mission::Mission_Command& cmd);
     void do_change_speed(const AP_Mission::Mission_Command& cmd);
     void do_set_home(const AP_Mission::Mission_Command& cmd);

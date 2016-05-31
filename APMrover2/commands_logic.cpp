@@ -186,7 +186,7 @@ void Rover::do_nav_wp(const AP_Mission::Mission_Command& cmd)
     // this will be used to remember the time in millis after we reach or pass the WP.
     loiter_time = 0;
     // this is the delay, stored in seconds
-    loiter_time_max = abs(cmd.p1);
+    loiter_time_max = cmd.p1;
 
     // this is the distance we travel past the waypoint - not there yet so 0 initially
     distance_past_wp = 0;
@@ -225,7 +225,7 @@ bool Rover::verify_nav_wp(const AP_Mission::Mission_Command& cmd)
     // We should always go through the waypoint i.e. the above code
     // first before we go past it.
     if (location_passed_point(current_loc, prev_WP, next_WP)) {
-        // check if we have gone futher past the wp then last time and output new message if we have
+        // check if we have gone further past the wp then last time and output new message if we have
         if ((uint32_t)distance_past_wp != (uint32_t)get_distance(current_loc, next_WP)) {
             distance_past_wp = get_distance(current_loc, next_WP);
             gcs_send_text_fmt(MAV_SEVERITY_INFO, "Passed waypoint #%i. Distance %um",
