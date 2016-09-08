@@ -220,6 +220,10 @@
  # define ELEVON_CH2_REVERSE     DISABLED
 #endif
 
+#ifndef DSPOILR_RUD_RATE_DEFAULT
+ #define DSPOILR_RUD_RATE_DEFAULT 100
+#endif
+
 //////////////////////////////////////////////////////////////////////////////
 // CAMERA TRIGGER AND CONTROL
 //
@@ -399,11 +403,6 @@
 // fence breach)
 #ifndef RESET_SWITCH_CHAN_PWM
  # define RESET_SWITCH_CHAN_PWM 1750
-#endif
-
-// OBC Failsafe enable
-#ifndef OBC_FAILSAFE
-#define OBC_FAILSAFE ENABLED
 #endif
 
 #define HIL_SUPPORT ENABLED

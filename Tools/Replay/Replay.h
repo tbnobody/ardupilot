@@ -70,7 +70,7 @@ public:
     AP_AHRS_NavEKF ahrs {ins, barometer, gps, rng, EKF, EKF2};
     AP_InertialNav_NavEKF inertial_nav{ahrs};
     AP_Vehicle::FixedWing aparm;
-    AP_Airspeed airspeed{aparm};
+    AP_Airspeed airspeed;
     DataFlash_Class dataflash{"Replay v0.1"};
 
 private:
@@ -97,6 +97,7 @@ public:
 
     bool check_solution = false;
     const char *log_filename = NULL;
+    bool generate_fpe = true;
 
     /*
       information about a log from find_log_info
@@ -175,6 +176,7 @@ private:
     const char **parse_list_from_string(const char *str);
     bool parse_param_line(char *line, char **vname, float &value);
     void load_param_file(const char *filename);
+    void set_signal_handlers(void);
 };
 
 enum {

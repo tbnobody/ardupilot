@@ -757,6 +757,16 @@ MAV_MISSION_RESULT AP_Mission::mavlink_int_to_mission_cmd(const mavlink_mission_
     case MAV_CMD_DO_VTOL_TRANSITION:
         cmd.content.do_vtol_transition.target_state = packet.param1;
         break;
+
+    case MAV_CMD_DO_SET_REVERSE:
+        cmd.p1 = packet.param1; // 0 = forward, 1 = reverse
+        break;
+
+    case MAV_CMD_DO_ENGINE_CONTROL:
+        cmd.content.do_engine_control.start_control = (packet.param1>0);
+        cmd.content.do_engine_control.cold_start = (packet.param2>0);
+        cmd.content.do_engine_control.height_delay_cm = packet.param3*100;
+        break;        
         
     default:
         // unrecognised command
@@ -768,10 +778,10 @@ MAV_MISSION_RESULT AP_Mission::mavlink_int_to_mission_cmd(const mavlink_mission_
 
         // sanity check location
         if (copy_location) {
-            if (abs(packet.x) > 900000000) {
+            if (!check_lat(packet.x)) {
                 return MAV_MISSION_INVALID_PARAM5_X;
             }
-            if (abs(packet.y) > 1800000000) {
+            if (!check_lng(packet.y)) {
                 return MAV_MISSION_INVALID_PARAM6_Y;
             }
         }
@@ -859,6 +869,12 @@ MAV_MISSION_RESULT AP_Mission::mavlink_to_mission_cmd(const mavlink_mission_item
     default:
         // all other commands use x and y as lat/lon. We need to
         // multiply by 1e7 to convert to int32_t
+        if (!check_lat(packet.x)) {
+            return MAV_MISSION_INVALID_PARAM5_X;
+        }
+        if (!check_lng(packet.y)) {
+            return MAV_MISSION_INVALID_PARAM6_Y;
+        }
         mav_cmd.x = packet.x * 1.0e7f;
         mav_cmd.y = packet.y * 1.0e7f;
         break;
@@ -1169,6 +1185,10 @@ bool AP_Mission::mission_cmd_to_mavlink_int(const AP_Mission::Mission_Command& c
         packet.param1 = cmd.p1;                         // disable=0 enable=1
         break;
 
+    case MAV_CMD_DO_SET_REVERSE:
+        packet.param1 = cmd.p1;   // 0 = forward, 1 = reverse
+        break;
+
     case MAV_CMD_NAV_ALTITUDE_WAIT:                     // MAV ID: 83
         packet.param1 = cmd.content.altitude_wait.altitude;
         packet.param2 = cmd.content.altitude_wait.descent_rate;
@@ -1186,7 +1206,13 @@ bool AP_Mission::mission_cmd_to_mavlink_int(const AP_Mission::Mission_Command& c
     case MAV_CMD_DO_VTOL_TRANSITION:
         packet.param1 = cmd.content.do_vtol_transition.target_state;
         break;
-        
+
+    case MAV_CMD_DO_ENGINE_CONTROL:
+        packet.param1 = cmd.content.do_engine_control.start_control?1:0;
+        packet.param2 = cmd.content.do_engine_control.cold_start?1:0;
+        packet.param3 = cmd.content.do_engine_control.height_delay_cm*0.01f;
+        break;        
+                
     default:
         // unrecognised command
         return false;
