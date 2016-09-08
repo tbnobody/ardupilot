@@ -121,23 +121,18 @@ void AP_HoTT_Telem::init(const AP_SerialManager& serial_manager)
     }
 }
 
-void AP_HoTT_Telem::update_data(uint8_t control_mode, uint32_t wp_distance, int32_t wp_bearing, int32_t home_distance, int32_t home_bearing, bool armed)
+void AP_HoTT_Telem::update_data(uint32_t wp_distance, int32_t wp_bearing, int32_t home_distance, int32_t home_bearing)
 {
     // return immediately if not initialised
     if (!_initialised_uart) {
         return;
     }
 
-    _mode = control_mode;
-    if (_mode > NUM_MODES) {
-        _mode = NUM_MODES;
-    }
-
     _wp_distance = wp_distance;
     _wp_bearing = wp_bearing;
     _home_distance = home_distance;
     _home_bearing = home_bearing;
-    _armed = armed;
+    _armed = AP_Notify::flags.armed;
 
     // Update only if not sending
     if (_hott_status != HOTT_SEND_GPS) {
@@ -171,6 +166,14 @@ void AP_HoTT_Telem::update_data(uint8_t control_mode, uint32_t wp_distance, int3
 
         // Update replay queue
         _alarms.update_replay_queue();
+    }
+}
+
+void AP_HoTT_Telem::update_control_mode(uint8_t mode)
+{
+	  _mode = mode;
+    if (_mode > NUM_MODES) {
+        _mode = NUM_MODES;
     }
 }
 

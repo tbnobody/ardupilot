@@ -19,6 +19,7 @@
 
 #include <AP_AHRS/AP_AHRS.h>
 #include <AP_BattMonitor/AP_BattMonitor.h>
+#include <AP_Notify/AP_Notify.h>
 #include <AP_SerialManager/AP_SerialManager.h>
 #include <AP_Common/AP_Common.h>
 #include <AP_Compass/AP_Compass.h>
@@ -38,8 +39,11 @@ public:
     // init - perform require initialisation including detecting which protocol to use
     void init(const AP_SerialManager& serial_manager);
 
+    // update flight control mode. The control mode is vehicle type specific
+    void update_control_mode(uint8_t mode);
+
     // update_data - updates structs containing telemetry information
-    void update_data(uint8_t control_mode, uint32_t wp_distance, int32_t wp_bearing, int32_t home_distance, int32_t home_bearing, bool armed);
+    void update_data(uint32_t wp_distance, int32_t wp_bearing, int32_t home_distance, int32_t home_bearing);
 
 private:
     // init_uart - initialise uart

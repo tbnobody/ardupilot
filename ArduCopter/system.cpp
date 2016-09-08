@@ -439,10 +439,8 @@ void Copter::check_usb_mux(void)
 #if HOTT_TELEM_ENABLED == ENABLED
 void Copter::hott_telemetry_send(void)
 {
-    hott_telemetry.update_data((uint8_t)control_mode, 
-        wp_distance, wp_bearing, 
-        home_distance, home_bearing,
-        motors.armed());
+    hott_telemetry.update_data(wp_distance, wp_bearing, 
+        home_distance, home_bearing);
 }
 #endif
 
