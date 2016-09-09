@@ -132,9 +132,6 @@ const AP_Scheduler::Task Copter::scheduler_tasks[] = {
 #if ADVANCED_FAILSAFE == ENABLED
     SCHED_TASK(afs_fs_check,          10,    100),
 #endif
-#if HOTT_TELEM_ENABLED == ENABLED
-    SCHED_TASK(hott_telemetry_send,    3.3,   75),
-#endif
     SCHED_TASK(terrain_update,        10,    100),
 #if EPM_ENABLED == ENABLED
     SCHED_TASK(epm_update,            10,     75),

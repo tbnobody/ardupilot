@@ -1076,7 +1076,6 @@ private:
     bool optflow_position_ok();
     void update_auto_armed();
     void check_usb_mux(void);
-    void hott_telemetry_send(void);
     bool should_log(uint32_t mask);
     bool current_mode_has_user_takeoff(bool must_navigate);
     bool do_user_takeoff(float takeoff_alt_cm, bool must_navigate);

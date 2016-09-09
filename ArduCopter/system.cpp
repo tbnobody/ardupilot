@@ -434,16 +434,6 @@ void Copter::check_usb_mux(void)
     ap.usb_connected = usb_check;
 }
 
-// hott_telemetry_send - sends telemetry data using hott telemetry
-//  should be called at 5Hz by scheduler
-#if HOTT_TELEM_ENABLED == ENABLED
-void Copter::hott_telemetry_send(void)
-{
-    hott_telemetry.update_data(wp_distance, wp_bearing, 
-        home_distance, home_bearing);
-}
-#endif
-
 /*
   should we log a message type now?
  */

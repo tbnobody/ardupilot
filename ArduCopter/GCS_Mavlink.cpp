@@ -324,6 +324,11 @@ void NOINLINE Copter::send_nav_controller_output(mavlink_channel_t chan)
         pos_control.get_alt_error() / 1.0e2f,
         0,
         0);
+
+#if HOTT_TELEM_ENABLED == ENABLED
+    // give waypoint data to HoTT_Telemetry
+    hott_telemetry.update_wp(wp_distance, wp_bearing);
+#endif
 }
 
 // report simulator state

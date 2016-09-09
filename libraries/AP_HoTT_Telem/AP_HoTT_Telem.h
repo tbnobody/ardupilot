@@ -42,12 +42,14 @@ public:
     // update flight control mode. The control mode is vehicle type specific
     void update_control_mode(uint8_t mode);
 
-    // update_data - updates structs containing telemetry information
-    void update_data(uint32_t wp_distance, int32_t wp_bearing, int32_t home_distance, int32_t home_bearing);
+    void update_wp(uint32_t wp_distance, int32_t wp_bearing);
 
 private:
     // init_uart - initialise uart
     void init_uart();
+
+    // update_data - updates structs containing telemetry information
+    void update_data();
 
     // hott_tick - main call to send updates to transmitter
     //  called by scheduler at a high rate
@@ -98,6 +100,7 @@ private:
     uint32_t _current_delay_ms;
     uint32_t _last_delay_ms;
     uint32_t _last_delay_1s;
+    uint32_t _last_delay_update;
 
     enum hott_status {
         HOTT_IDLE,

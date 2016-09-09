@@ -121,18 +121,29 @@ void AP_HoTT_Telem::init(const AP_SerialManager& serial_manager)
     }
 }
 
-void AP_HoTT_Telem::update_data(uint32_t wp_distance, int32_t wp_bearing, int32_t home_distance, int32_t home_bearing)
+void AP_HoTT_Telem::update_data()
 {
     // return immediately if not initialised
     if (!_initialised_uart) {
         return;
     }
 
-    _wp_distance = wp_distance;
-    _wp_bearing = wp_bearing;
-    _home_distance = home_distance;
-    _home_bearing = home_bearing;
     _armed = AP_Notify::flags.armed;
+
+    // Calculate Home
+    Location loc;
+    if (_ahrs.get_position(loc)) {
+        // check home_loc is valid
+        const Location &home_loc = _ahrs.get_home();
+        if (home_loc.lat != 0 || home_loc.lng != 0) {
+            _home_distance = roundf(get_distance_cm(home_loc, loc));
+            _home_bearing = roundf(get_bearing_cd(loc, home_loc));
+
+        } else {
+            _home_distance = 0;
+            _home_bearing = 0;
+        }
+    }
 
     // Update only if not sending
     if (_hott_status != HOTT_SEND_GPS) {
@@ -177,6 +188,12 @@ void AP_HoTT_Telem::update_control_mode(uint8_t mode)
     }
 }
 
+void AP_HoTT_Telem::update_wp(uint32_t wp_distance, int32_t wp_bearing)
+{
+    _wp_distance = wp_distance;
+    _wp_bearing = wp_bearing;
+}
+
 /*
   init_uart - initialise uart
   this must be called from hott_tick which is called from the 1khz scheduler
@@ -198,6 +215,14 @@ void AP_HoTT_Telem::hott_tick(void)
     // check UART has been initialised
     if (!_initialised_uart) {
         init_uart();
+    }
+
+    // check if data update is required
+    uint32_t now = AP_HAL::millis();
+    if (now - _last_delay_update > 1000) {
+        _last_delay_update = AP_HAL::millis();
+
+        update_data();
     }
 
     // check if there is any data to send
