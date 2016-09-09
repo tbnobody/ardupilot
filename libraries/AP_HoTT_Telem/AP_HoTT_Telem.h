@@ -14,8 +14,7 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#ifndef __AP_HOTT_TELEM_H__
-#define __AP_HOTT_TELEM_H__
+#pragma once
 
 #include <AP_AHRS/AP_AHRS.h>
 #include <AP_BattMonitor/AP_BattMonitor.h>
@@ -135,4 +134,3 @@ private:
     AP_HoTT_TextMode _text_mode;
 
 };
-#endif
