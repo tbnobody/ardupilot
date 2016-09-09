@@ -14,8 +14,7 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#ifndef __AP_HOTT_TEXTMODE_H__
-#define __AP_HOTT_TEXTMODE_H__
+#pragma once
 
 #include <string.h>
 #include <inttypes.h>
@@ -81,4 +80,3 @@ private:
     };
 
 };
-#endif

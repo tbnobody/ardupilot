@@ -18,8 +18,7 @@
 //
 //
 
-#ifndef __HOTT_MSGS_H__
-#define __HOTT_MSGS_H__
+#pragma once
 
 #define TEXT_MODE_REQUEST_ID   0x7f
 #define BINARY_MODE_REQUEST_ID 0x80
@@ -462,5 +461,3 @@ struct HOTT_AIRESC_MSG {
     uint8_t stop_byte;      //#44 constant value 0x7d
     uint8_t parity;         //#45 CRC/Parity
 };
-
-#endif

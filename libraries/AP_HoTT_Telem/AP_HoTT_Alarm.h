@@ -14,8 +14,7 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#ifndef __AP_HOTT_ALARM_H__
-#define __AP_HOTT_ALARM_H__
+#pragma once
 
 #include <string.h>
 #include <inttypes.h>
@@ -80,4 +79,3 @@ private:
     HoTT_Alarm_Event_t _alarm_queue[HOTT_ALARM_QUEUE_MAX];
     HoTT_Alarm_Event_t _alarm_replay_queue[HOTT_ALARM_QUEUE_MAX];
 };
-#endif
