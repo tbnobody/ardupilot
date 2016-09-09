@@ -172,9 +172,6 @@ def kill_tasks():
     except Exception as e:
         progress("kill_tasks failed: {}".format(str(e)))
 
-# clean up processes at exit:
-atexit.register(kill_tasks)
-
 
 def check_jsbsim_version():
     """Assert that the JSBSim we will run is the one we expect to run"""
@@ -217,12 +214,13 @@ def find_root_dir():
     """Return path to root directory"""
     return os.path.realpath(os.path.join(find_autotest_dir(), '../..'))
 
-progress("Start")
-
 # define and run parser
-parser = CompatOptionParser("sim_vehicle.py", epilog="""
-    eeprom.bin in the starting directory contains the parameters for your simulated vehicle. Always start from the same directory. It is recommended that you start in the main vehicle directory for the vehicle you are simulating, for example, start in the ArduPlane directory to simulate ArduPlane
-""")
+parser = CompatOptionParser("sim_vehicle.py",
+        epilog="eeprom.bin in the starting directory contains the parameters for your " \
+               "simulated vehicle. Always start from the same directory. It is "\
+               "recommended that you start in the main vehicle directory for the vehicle" \
+               "you are simulating, for example, start in the ArduPlane directory to " \
+               "simulate ArduPlane")
 
 parser.add_option("-v", "--vehicle", type='string', default=None, help="vehicle type (ArduPlane, ArduCopter or APMrover2)")
 parser.add_option("-f", "--frame", type='string', default=None, help="""set aircraft frame type
@@ -271,9 +269,15 @@ group = optparse.OptionGroup(parser, "Compatibility MAVProxy options (consider u
 group.add_option("", "--out", default=[], type='string', action="append", help="create an additional mavlink output")
 group.add_option("", "--map", default=False, action='store_true', help="load map module on startup")
 group.add_option("", "--console", default=False, action='store_true', help="load console module on startup")
+group.add_option("", "--aircraft", default=None, help="store state and logs in named directory")
 parser.add_option_group(group)
 
 cmd_opts, cmd_args = parser.parse_args()
+
+# clean up processes at exit:
+atexit.register(kill_tasks)
+
+progress("Start")
 
 if cmd_opts.sim_vehicle_sh_compatible and cmd_opts.jobs is None:
     cmd_opts.jobs = 1
@@ -767,6 +771,8 @@ def start_mavproxy(opts, stuff):
         cmd.append('--map')
     if opts.console:
         cmd.append('--console')
+    if opts.aircraft is not None:
+        cmd.extend(['--aircraft', opts.aircraft])
 
     if len(extra_cmd):
         cmd.extend(['--cmd', extra_cmd])
