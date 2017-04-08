@@ -182,7 +182,7 @@ void AP_HoTT_Telem::update_data()
 
 void AP_HoTT_Telem::update_control_mode(uint8_t mode)
 {
-	  _mode = mode;
+    _mode = mode;
     if (_mode > NUM_MODES) {
         _mode = NUM_MODES;
     }
