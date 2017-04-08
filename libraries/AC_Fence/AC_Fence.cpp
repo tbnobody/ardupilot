@@ -1,4 +1,3 @@
-/// -*- tab-width: 4; Mode: C++; c-basic-offset: 4; indent-tabs-mode: nil -*-
 #include <AP_HAL/AP_HAL.h>
 #include "AC_Fence.h"
 #include <GCS_MAVLink/GCS_MAVLink.h>
@@ -61,6 +60,15 @@ const AP_Param::GroupInfo AC_Fence::var_info[] = {
     // @User: Standard
     AP_GROUPINFO("TOTAL",       6,  AC_Fence,   _total, 0),
 
+    // @Param: ALT_MIN
+    // @DisplayName: Fence Minimum Altitude
+    // @Description: Minimum altitude allowed before geofence triggers
+    // @Units: Meters
+    // @Range: -100 100
+    // @Increment: 1
+    // @User: Standard
+    AP_GROUPINFO_FRAME("ALT_MIN",     7,  AC_Fence,   _alt_min,       AC_FENCE_ALT_MIN_DEFAULT, AP_PARAM_FRAME_SUB),
+
     AP_GROUPEND
 };
 
@@ -100,8 +108,10 @@ uint8_t AC_Fence::get_enabled_fences() const
 }
 
 /// pre_arm_check - returns true if all pre-takeoff checks have completed successfully
-bool AC_Fence::pre_arm_check() const
+bool AC_Fence::pre_arm_check(const char* &fail_msg) const
 {
+    fail_msg = nullptr;
+
     // if not enabled or not fence set-up always return true
     if (!_enabled || _enabled_fences == AC_FENCE_TYPE_NONE) {
         return true;
@@ -109,11 +119,13 @@ bool AC_Fence::pre_arm_check() const
 
     // check no limits are currently breached
     if (_breached_fences != AC_FENCE_TYPE_NONE) {
+        fail_msg =  "vehicle outside fence";
         return false;
     }
 
     // if we have horizontal limits enabled, check inertial nav position is ok
-    if ((_enabled_fences & AC_FENCE_TYPE_CIRCLE)!=0 && !_inav.get_filter_status().flags.horiz_pos_abs && !_inav.get_filter_status().flags.pred_horiz_pos_abs) {
+    if ((_enabled_fences & (AC_FENCE_TYPE_CIRCLE | AC_FENCE_TYPE_POLYGON))>0 && !_inav.get_filter_status().flags.horiz_pos_abs && !_inav.get_filter_status().flags.pred_horiz_pos_abs) {
+        fail_msg = "fence requires position";
         return false;
     }
 
@@ -157,7 +169,7 @@ uint8_t AC_Fence::check_fence(float curr_alt)
 
                 // record that we have breached the upper limit
                 record_breach(AC_FENCE_TYPE_ALT_MAX);
-                ret = ret | AC_FENCE_TYPE_ALT_MAX;
+                ret |= AC_FENCE_TYPE_ALT_MAX;
 
                 // create a backup fence 20m higher up
                 _alt_max_backup = curr_alt + AC_FENCE_ALT_MAX_BACKUP_DISTANCE;
@@ -186,7 +198,7 @@ uint8_t AC_Fence::check_fence(float curr_alt)
 
                 // record that we have breached the circular distance limit
                 record_breach(AC_FENCE_TYPE_CIRCLE);
-                ret = ret | AC_FENCE_TYPE_CIRCLE;
+                ret |= AC_FENCE_TYPE_CIRCLE;
 
                 // create a backup fence 20m further out
                 _circle_radius_backup = _home_distance + AC_FENCE_CIRCLE_RADIUS_BACKUP_DISTANCE;
@@ -218,7 +230,7 @@ uint8_t AC_Fence::check_fence(float curr_alt)
                 if ((_breached_fences & AC_FENCE_TYPE_POLYGON) == 0) {
                     // record that we have breached the polygon
                     record_breach(AC_FENCE_TYPE_POLYGON);
-                    ret = ret | AC_FENCE_TYPE_POLYGON;
+                    ret |= AC_FENCE_TYPE_POLYGON;
                 }
             } else {
                 // clear breach if present
@@ -346,7 +358,7 @@ bool AC_Fence::boundary_breached(const Vector2f& location, uint16_t num_points, 
 void AC_Fence::handle_msg(mavlink_channel_t chan, mavlink_message_t* msg)
 {
     // exit immediately if null message
-    if (msg == NULL) {
+    if (msg == nullptr) {
         return;
     }
 
@@ -406,7 +418,7 @@ bool AC_Fence::load_polygon_from_eeprom(bool force_reload)
     }
 
     // exit if we could not allocate RAM for the boundary
-    if (_boundary == NULL) {
+    if (_boundary == nullptr) {
         return false;
     }
 

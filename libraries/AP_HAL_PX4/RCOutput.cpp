@@ -1,5 +1,3 @@
-/// -*- tab-width: 4; Mode: C++; c-basic-offset: 4; indent-tabs-mode: nil -*-
-
 #include <AP_HAL/AP_HAL.h>
 
 #if CONFIG_HAL_BOARD == HAL_BOARD_PX4
@@ -40,7 +38,8 @@ void PX4RCOutput::init()
         hal.console->printf("RCOutput: Unable to setup IO arming OK\n");
     }
 
-    _rate_mask = 0;
+    _rate_mask_main = 0;
+    _rate_mask_alt = 0;
     _alt_fd = -1;    
     _servo_count = 0;
     _alt_servo_count = 0;
@@ -55,24 +54,27 @@ void PX4RCOutput::init()
     }
 
 #if !defined(CONFIG_ARCH_BOARD_PX4FMU_V4)
-    _alt_fd = open("/dev/px4fmu", O_RDWR);
-    if (_alt_fd == -1) {
-        hal.console->printf("RCOutput: failed to open /dev/px4fmu");
-        return;
+    struct stat st;
+    // don't try and open px4fmu unless there is a px4io. Otherwise we
+    // can end up opening the same device twice
+    if (stat("/dev/px4io", &st) == 0) {
+        _alt_fd = open("/dev/px4fmu", O_RDWR);
+        if (_alt_fd == -1) {
+            hal.console->printf("RCOutput: failed to open /dev/px4fmu");
+        }
     }
 #endif
 
     // ensure not to write zeros to disabled channels
-    _enabled_channels = 0;
     for (uint8_t i=0; i < PX4_NUM_OUTPUT_CHANNELS; i++) {
         _period[i] = PWM_IGNORE_THIS_CHANNEL;
     }
 
     // publish actuator vaules on demand
-    _actuator_direct_pub = NULL;
+    _actuator_direct_pub = nullptr;
 
     // and armed state
-    _actuator_armed_pub = NULL;
+    _actuator_armed_pub = nullptr;
 }
 
 
@@ -97,8 +99,12 @@ void PX4RCOutput::_init_alt_channels(void)
 /*
   set output frequency on outputs associated with fd
  */
-void PX4RCOutput::set_freq_fd(int fd, uint32_t chmask, uint16_t freq_hz) 
+void PX4RCOutput::set_freq_fd(int fd, uint32_t chmask, uint16_t freq_hz, uint32_t &rate_mask) 
 {
+    if (_output_mode == MODE_PWM_BRUSHED16KHZ) {
+        freq_hz = 2000; // this maps to 16kHz due to 8MHz clock
+    }
+    
     // we can't set this per channel
     if (freq_hz > 50 || freq_hz == 1) {
         // we're being asked to set the alt rate
@@ -110,7 +116,7 @@ void PX4RCOutput::set_freq_fd(int fd, uint32_t chmask, uint16_t freq_hz)
              */
             freq_hz = 1;
         }
-        //::printf("SET_UPDATE_RATE %u\n", (unsigned)freq_hz);
+        //::printf("SET_UPDATE_RATE %d %u\n", fd, (unsigned)freq_hz);
         if (ioctl(fd, PWM_SERVO_SET_UPDATE_RATE, (unsigned long)freq_hz) != 0) {
             hal.console->printf("RCOutput: Unable to set alt rate to %uHz\n", (unsigned)freq_hz);
             return;
@@ -131,33 +137,36 @@ void PX4RCOutput::set_freq_fd(int fd, uint32_t chmask, uint16_t freq_hz)
      */
     if (freq_hz > 50 || freq_hz == 1) {
         // we are setting high rates on the given channels
-        _rate_mask |= chmask & 0xFF;
-        if (_rate_mask & 0x3) {
-            _rate_mask |= 0x3;
+        rate_mask |= chmask & 0xFF;
+        if (rate_mask & 0x3) {
+            rate_mask |= 0x3;
         }
-        if (_rate_mask & 0xc) {
-            _rate_mask |= 0xc;
+        if (rate_mask & 0xc) {
+            rate_mask |= 0xc;
         }
-        if (_rate_mask & 0xF0) {
-            _rate_mask |= 0xF0;
+        if (rate_mask & 0xF0) {
+            rate_mask |= 0xF0;
         }
     } else {
         // we are setting low rates on the given channels
         if (chmask & 0x3) {
-            _rate_mask &= ~0x3;
+            rate_mask &= ~0x3;
         }
         if (chmask & 0xc) {
-            _rate_mask &= ~0xc;
+            rate_mask &= ~0xc;
         }
         if (chmask & 0xf0) {
-            _rate_mask &= ~0xf0;
+            rate_mask &= ~0xf0;
         }
     }
 
-    //::printf("SELECT_UPDATE_RATE 0x%02x\n", (unsigned)_rate_mask);
-    if (ioctl(fd, PWM_SERVO_SET_SELECT_UPDATE_RATE, _rate_mask) != 0) {
-        hal.console->printf("RCOutput: Unable to set alt rate mask to 0x%x\n", (unsigned)_rate_mask);
+    if (ioctl(fd, PWM_SERVO_SET_SELECT_UPDATE_RATE, rate_mask) != 0) {
+        hal.console->printf("RCOutput: Unable to set alt rate mask to 0x%x\n", (unsigned)rate_mask);
     }
+
+    if (_output_mode == MODE_PWM_BRUSHED16KHZ) {
+        ioctl(fd, PWM_SERVO_SET_UPDATE_CLOCK, 8);
+    }    
 }
 
 /*
@@ -175,30 +184,32 @@ void PX4RCOutput::set_freq(uint32_t chmask, uint16_t freq_hz)
         hal.console->printf("RCOutput: Unable to get servo count\n");        
         return;
     }
-    if (_alt_fd != -1 && ioctl(_alt_fd, PWM_SERVO_GET_COUNT, (unsigned long)&_alt_servo_count) != 0) {
-        hal.console->printf("RCOutput: Unable to get alt servo count\n");        
-        return;
-    }
     
     // greater than 400 doesn't give enough room at higher periods for
     // the down pulse
-    if (freq_hz > 400) {
+    if (freq_hz > 400 && _output_mode != MODE_PWM_BRUSHED16KHZ) {
         freq_hz = 400;
     }
     uint32_t primary_mask = chmask & ((1UL<<_servo_count)-1);
     uint32_t alt_mask = chmask >> _servo_count;
     if (primary_mask && _pwm_fd != -1) {
-        set_freq_fd(_pwm_fd, primary_mask, freq_hz);
+        set_freq_fd(_pwm_fd, primary_mask, freq_hz, _rate_mask_main);
     }
     if (alt_mask && _alt_fd != -1) {
-        set_freq_fd(_alt_fd, alt_mask, freq_hz);
+        set_freq_fd(_alt_fd, alt_mask, freq_hz, _rate_mask_alt);
     }
 }
 
 uint16_t PX4RCOutput::get_freq(uint8_t ch) 
 {
-    if (_rate_mask & (1U<<ch)) {
-        return _freq_hz;
+    if (ch < _servo_count) {
+        if (_rate_mask_main & (1U<<ch)) {
+            return _freq_hz;
+        }
+    } else if (_alt_fd != -1) {
+        if (_rate_mask_alt & (1U<<(ch-_servo_count))) {
+            return _freq_hz;
+        }
     }
     return 50;
 }
@@ -316,6 +327,22 @@ void PX4RCOutput::write(uint8_t ch, uint16_t period_us)
     if (ch >= _max_channel) {
         _max_channel = ch + 1;
     }
+
+    if (_output_mode == MODE_PWM_BRUSHED16KHZ) {
+        // map from the PWM range to 0 t0 100% duty cycle. For 16kHz
+        // this ends up being 0 to 500 pulse width in units of
+        // 125usec.
+        const uint32_t period_max = 1000000UL/(16000/8);
+        if (period_us <= _esc_pwm_min) {
+            period_us = 0;
+        } else if (period_us >= _esc_pwm_max) {
+            period_us = period_max;
+        } else {
+            uint32_t pdiff = period_us - _esc_pwm_min;
+            period_us = pdiff*period_max/(_esc_pwm_max - _esc_pwm_min);
+        }
+    }
+    
     /*
       only mark an update is needed if there has been a change, or we
       are in oneshot mode. In oneshot mode we always need to send the
@@ -381,11 +408,15 @@ void PX4RCOutput::_arm_actuators(bool arm)
 
 	_armed.timestamp = hrt_absolute_time();
     _armed.armed = arm;
-    _armed.ready_to_arm = arm;
+    if (arm) {
+        // this latches ready_to_arm to true once set once. Otherwise
+        // we have a race condition with px4io safety switch update
+        _armed.ready_to_arm = true;
+    }
     _armed.lockdown = false;
     _armed.force_failsafe = false;
 
-    if (_actuator_armed_pub == NULL) {
+    if (_actuator_armed_pub == nullptr) {
         _actuator_armed_pub = orb_advertise(ORB_ID(actuator_armed), &_armed);
     } else {
         orb_publish(ORB_ID(actuator_armed), _actuator_armed_pub, &_armed);
@@ -427,13 +458,15 @@ void PX4RCOutput::_publish_actuators(void)
         actuators.values[i] = actuators.values[i]*2 - 1;
     }
 
-    if (_actuator_direct_pub == NULL) {
+    if (_actuator_direct_pub == nullptr) {
         _actuator_direct_pub = orb_advertise(ORB_ID(actuator_direct), &actuators);
     } else {
         orb_publish(ORB_ID(actuator_direct), _actuator_direct_pub, &actuators);
     }
     if (hal.util->safety_switch_state() != AP_HAL::Util::SAFETY_DISARMED) {
         _arm_actuators(true);
+    } else {
+        _arm_actuators(false);
     }
 }
 
@@ -473,7 +506,7 @@ void PX4RCOutput::_send_outputs(void)
         }
         if (to_send > 0) {
             for (int i=to_send-1; i >= 0; i--) {
-                if (_period[i] == 0 || _period[i] == PWM_IGNORE_THIS_CHANNEL) {
+                if (_period[i] == PWM_IGNORE_THIS_CHANNEL) {
                     to_send = i;
                 } else {
                     break;
@@ -537,9 +570,9 @@ void PX4RCOutput::push()
     }
 }
 
-void PX4RCOutput::_timer_tick(void)
+void PX4RCOutput::timer_tick(void)
 {
-    if (_output_mode != MODE_PWM_ONESHOT) {
+    if (_output_mode != MODE_PWM_ONESHOT && !_corking) {
         /* in oneshot mode the timer does nothing as the outputs are
          * sent from push() */
         _send_outputs();
@@ -588,20 +621,32 @@ void PX4RCOutput::set_output_mode(enum output_mode mode)
         // mean the timer is constantly reset, so no pulses are
         // produced except when triggered by push() when the main loop
         // is running
-        set_freq(_rate_mask, 1);
+        set_freq_fd(_pwm_fd, _rate_mask_main, 1, _rate_mask_main);
+        if (_alt_fd != -1) {
+            set_freq_fd(_alt_fd, _rate_mask_alt, 1, _rate_mask_alt);
+        }
     }
     _output_mode = mode;
-    if (_output_mode == MODE_PWM_ONESHOT) {
-        //::printf("enable oneshot\n");
+    switch (_output_mode) {
+    case MODE_PWM_ONESHOT:
         ioctl(_pwm_fd, PWM_SERVO_SET_ONESHOT, 1);
         if (_alt_fd != -1) {
             ioctl(_alt_fd, PWM_SERVO_SET_ONESHOT, 1);
         }
-    } else {
+        break;
+    case MODE_PWM_NORMAL:
         ioctl(_pwm_fd, PWM_SERVO_SET_ONESHOT, 0);
         if (_alt_fd != -1) {
             ioctl(_alt_fd, PWM_SERVO_SET_ONESHOT, 0);
         }
+        break;
+    case MODE_PWM_BRUSHED16KHZ:
+        // setup an 8MHz clock. This has the effect of scaling all outputs by 8x
+        ioctl(_pwm_fd, PWM_SERVO_SET_UPDATE_CLOCK, 8);
+        if (_alt_fd != -1) {
+            ioctl(_alt_fd, PWM_SERVO_SET_UPDATE_CLOCK, 8);
+        }
+        break;
     }
 }
 
