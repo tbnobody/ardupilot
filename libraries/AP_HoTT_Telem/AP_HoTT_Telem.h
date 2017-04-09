@@ -26,10 +26,6 @@
 #include "AP_HoTT_TextMode.h"
 #include "hott_msgs.h"
 
-#if APM_BUILD_TYPE(APM_BUILD_ArduCopter)
-#include "../../ArduCopter/defines.h"
-#endif
-
 class AP_HoTT_Telem {
 public:
     //constructor

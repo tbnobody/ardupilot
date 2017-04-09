@@ -55,6 +55,9 @@ const char hott_flight_mode_strings[NUM_MODES+1][10] = {
     "???"
 };
 
+#define AUTO   3
+#define LOITER 5
+
 //constructor
 AP_HoTT_Telem::AP_HoTT_Telem(AP_AHRS &ahrs, AP_BattMonitor &battery, Location &current_loc, AP_Baro &barometer) :
     _ahrs(ahrs),
@@ -418,19 +421,23 @@ void AP_HoTT_Telem::update_gps_data()
 
     // Mean sea level altitude
     if (_current_loc.flags.relative_alt) {
-        (uint16_t &)_hott_gps_msg.msl_altitude_L = (_current_loc.alt + _ahrs.get_home().alt) / 100;
+        _hott_gps_msg.msl_altitude_L = ((_current_loc.alt + _ahrs.get_home().alt) / 100);
+        _hott_gps_msg.msl_altitude_H = ((_current_loc.alt + _ahrs.get_home().alt) / 100) >> 8;
     } else {
-        (uint16_t &)_hott_gps_msg.msl_altitude_L = _current_loc.alt / 100;
+        _hott_gps_msg.msl_altitude_L = (_current_loc.alt / 100);
+        _hott_gps_msg.msl_altitude_H = (_current_loc.alt / 100) >> 8;
     }
 
     // Altitude meters above ground
-    (uint16_t &)_hott_gps_msg.altitude_L = HOTT_OFFSET_ALTITUDE + get_altitude_rel() / 100;
+    _hott_gps_msg.altitude_L = (HOTT_OFFSET_ALTITUDE + get_altitude_rel() / 100);
+    _hott_gps_msg.altitude_H = (HOTT_OFFSET_ALTITUDE + get_altitude_rel() / 100) >> 8;
 
     // Flight Direction
     _hott_gps_msg.flight_direction = _ahrs.yaw_sensor / 200; // in 2* steps
 
     // Ground Speed
-    (uint16_t &)_hott_gps_msg.gps_speed_L = (uint16_t)((float)((gps.ground_speed()) * 3.6));
+    _hott_gps_msg.gps_speed_L = (uint8_t)((float)((gps.ground_speed()) * 3.6));
+    _hott_gps_msg.gps_speed_H = (uint8_t)((float)((gps.ground_speed()) * 3.6)) >> 8;
 
     // GPS Status
     switch (gps.status()) {
@@ -445,7 +452,8 @@ void AP_HoTT_Telem::update_gps_data()
         _hott_gps_msg.alarm_invers2 = 1;
         _hott_gps_msg.gps_fix_char  = '2';
         _hott_gps_msg.free_char3    = '2';
-        (uint16_t &)_hott_gps_msg.home_distance_L = 0; // set distance to 0 since there is no GPS signal
+        _hott_gps_msg.home_distance_L = 0; // set distance to 0 since there is no GPS signal
+        _hott_gps_msg.home_distance_H = 0;
         break;
 
     default:
@@ -453,7 +461,8 @@ void AP_HoTT_Telem::update_gps_data()
         _hott_gps_msg.alarm_invers2 = 1;
         _hott_gps_msg.gps_fix_char  = '-';
         _hott_gps_msg.free_char3    = '-';
-        (uint16_t &)_hott_gps_msg.home_distance_L = 0; // set distance to 0 since there is no GPS signal
+        _hott_gps_msg.home_distance_L = 0; // set distance to 0 since there is no GPS signal
+        _hott_gps_msg.home_distance_H = 0;
     }
 
     // Home distance
@@ -461,7 +470,8 @@ void AP_HoTT_Telem::update_gps_data()
     case AUTO:
     case LOITER:
         //Use home direction field to display direction an distance to next waypoint
-        (uint16_t &)_hott_gps_msg.home_distance_L = _wp_distance / 100;
+        _hott_gps_msg.home_distance_L = (_wp_distance / 100);
+        _hott_gps_msg.home_distance_H = (_wp_distance / 100) >> 8;
         _hott_gps_msg.home_direction = _wp_bearing / 200;
         _hott_gps_msg.free_char1 = 'W';
         _hott_gps_msg.free_char2 = 'P';
@@ -469,7 +479,8 @@ void AP_HoTT_Telem::update_gps_data()
 
     default:
         //Display Home direction and distance
-        (uint16_t &)_hott_gps_msg.home_distance_L = _home_distance / 100;
+        _hott_gps_msg.home_distance_L = (_home_distance / 100);
+        _hott_gps_msg.home_distance_H = (_home_distance / 100) >> 8;
         _hott_gps_msg.home_direction = _home_bearing / 200;
         _hott_gps_msg.free_char1 = 'H';
         _hott_gps_msg.free_char2 = 'O';
@@ -477,8 +488,20 @@ void AP_HoTT_Telem::update_gps_data()
     }
 
     // Coordinates
-    convert_lat_long(gps.location().lat, (uint8_t &)_hott_gps_msg.pos_NS, (uint16_t &)_hott_gps_msg.pos_NS_dm_L, (uint16_t &)_hott_gps_msg.pos_NS_sec_L);
-    convert_lat_long(gps.location().lng, (uint8_t &)_hott_gps_msg.pos_EW, (uint16_t &)_hott_gps_msg.pos_EW_dm_L, (uint16_t &)_hott_gps_msg.pos_EW_sec_L);
+    uint16_t pos_NS_dm;
+    uint16_t pos_EW_dm;
+    uint16_t pos_NS_sec;
+    uint16_t pos_EW_sec;
+    convert_lat_long(gps.location().lat, (uint8_t &)_hott_gps_msg.pos_NS, pos_NS_dm, pos_NS_sec);
+    convert_lat_long(gps.location().lng, (uint8_t &)_hott_gps_msg.pos_EW, pos_EW_dm, pos_EW_sec);
+    _hott_gps_msg.pos_NS_dm_L = pos_NS_dm;
+    _hott_gps_msg.pos_NS_dm_H = pos_NS_dm >> 8;
+    _hott_gps_msg.pos_NS_sec_L = pos_NS_sec;
+    _hott_gps_msg.pos_NS_sec_H = pos_NS_sec >> 8;
+    _hott_gps_msg.pos_EW_dm_L = pos_EW_dm;
+    _hott_gps_msg.pos_EW_dm_H = pos_EW_dm >> 8;
+    _hott_gps_msg.pos_EW_sec_L = pos_EW_sec;
+    _hott_gps_msg.pos_EW_sec_H = pos_EW_sec >> 8;
 
     // Satelite Count
     _hott_gps_msg.gps_satelites = gps.num_sats();
@@ -491,7 +514,9 @@ void AP_HoTT_Telem::update_gps_data()
     _hott_gps_msg.angle_nick = _ahrs.pitch_sensor / 200;
 
     // Climbrate
-    (int16_t &)_hott_gps_msg.climbrate_L = HOTT_OFFSET_CLIMBRATE + _climbrate1s;
+    _hott_gps_msg.climbrate_L = (HOTT_OFFSET_CLIMBRATE + _climbrate1s);
+    _hott_gps_msg.climbrate_H = (HOTT_OFFSET_CLIMBRATE + _climbrate1s) >> 8;
+    
     _hott_gps_msg.climbrate3s            = 120   + (_climbrate3s / 100);  // 0 m/3s
 
     // GPS Time
@@ -513,23 +538,32 @@ void AP_HoTT_Telem::update_eam_data()
     const AP_GPS &gps = _ahrs.get_gps();
 
     // Battery
-    (uint16_t &)_hott_eam_msg.main_voltage_L = (uint16_t)(_battery.voltage() * (float)10.0);
-    (uint16_t &)_hott_eam_msg.current_L      = (uint16_t)(_battery.current_amps() * (float)10.0);
-    (uint16_t &)_hott_eam_msg.batt_cap_L     = (uint16_t)(_battery.current_total_mah() / (float)10.0);
+    _hott_eam_msg.main_voltage_L = ((uint8_t)(_battery.voltage() * (float)10.0));
+    _hott_eam_msg.main_voltage_H = ((uint8_t)(_battery.voltage() * (float)10.0)) >> 8;
+
+
+    _hott_eam_msg.current_L      = ((uint8_t)(_battery.current_amps() * (float)10.0));
+    _hott_eam_msg.current_H      = ((uint8_t)(_battery.current_amps() * (float)10.0)) >> 8;
+
+    _hott_eam_msg.batt_cap_L     = ((uint8_t)(_battery.current_total_mah() / (float)10.0));
+    _hott_eam_msg.batt_cap_H     = ((uint8_t)(_battery.current_total_mah() / (float)10.0)) >> 8;
 
     // Climbrate
     _hott_eam_msg.climbrate3s             = 120   + (_climbrate3s / 100);  // 0 m/3s using filtered data here
-    (uint16_t &)_hott_eam_msg.climbrate_L = HOTT_OFFSET_CLIMBRATE + _climbrate1s;
+    _hott_eam_msg.climbrate_L = (HOTT_OFFSET_CLIMBRATE + _climbrate1s);
+    _hott_eam_msg.climbrate_H = (HOTT_OFFSET_CLIMBRATE + _climbrate1s) >> 8;
 
     // Altitude
-    (uint16_t &)_hott_eam_msg.altitude_L = HOTT_OFFSET_ALTITUDE + get_altitude_rel() / 100;
+    _hott_eam_msg.altitude_L = (HOTT_OFFSET_ALTITUDE + get_altitude_rel() / 100);
+    _hott_eam_msg.altitude_H = (HOTT_OFFSET_ALTITUDE + get_altitude_rel() / 100) >> 8;
 
     // Electric time. Time the APM is ARMED
     _hott_eam_msg.electric_min = _electric_time / 60;
     _hott_eam_msg.electric_sec = _electric_time % 60;
 
     // Ground Speed
-    (uint16_t &)_hott_eam_msg.speed_L = ((float)((gps.ground_speed()) * 3.6));
+    _hott_eam_msg.speed_L = (uint8_t)((float)((gps.ground_speed()) * 3.6));
+    _hott_eam_msg.speed_H = (uint8_t)((float)((gps.ground_speed()) * 3.6)) >> 8;
 
     // Temperature
     _hott_eam_msg.temp1 = HOTT_OFFSET_TEMPERATURE + _barometer.get_temperature();
@@ -562,24 +596,32 @@ void AP_HoTT_Telem::update_vario_data()
     static int16_t min_altitude = HOTT_OFFSET_ALTITUDE;
 
     // Altitude
-    (uint16_t &)_hott_vario_msg.altitude_L = HOTT_OFFSET_ALTITUDE + get_altitude_rel() / 100;
+    _hott_vario_msg.altitude_L = (HOTT_OFFSET_ALTITUDE + get_altitude_rel() / 100);
+    _hott_vario_msg.altitude_H = (HOTT_OFFSET_ALTITUDE + get_altitude_rel() / 100) >> 8;
 
     // Altitude Max
-    if ((int16_t &)_hott_vario_msg.altitude_L > max_altitude && _armed) { //calc only in ARMED mode
-        max_altitude = (int16_t &)_hott_vario_msg.altitude_L;
+    uint16_t altitude;
+    altitude = (((uint16_t)_hott_vario_msg.altitude_H) << 8) + _hott_vario_msg.altitude_L;
+    if (altitude > max_altitude && _armed) { //calc only in ARMED mode
+        max_altitude = altitude;
     }
-    (uint16_t &)_hott_vario_msg.altitude_max_L = max_altitude;
+    _hott_vario_msg.altitude_max_L = max_altitude;
+    _hott_vario_msg.altitude_max_H = max_altitude >> 8;
 
     // Altitude Min
-    if ((int16_t &)_hott_vario_msg.altitude_L < min_altitude && _armed) { //calc only in ARMED mode
-        min_altitude = (int16_t &)_hott_vario_msg.altitude_L;
+    if (altitude < min_altitude && _armed) { //calc only in ARMED mode
+        min_altitude = altitude;
     }
-    (uint16_t &)_hott_vario_msg.altitude_min_L = min_altitude;
+    _hott_vario_msg.altitude_min_L = min_altitude;
+    _hott_vario_msg.altitude_min_H = min_altitude >> 8;
 
     // Climbrate
-    (int16_t &)_hott_vario_msg.climbrate_L    = HOTT_OFFSET_CLIMBRATE + _climbrate1s;
-    (int16_t &)_hott_vario_msg.climbrate3s_L  = HOTT_OFFSET_CLIMBRATE + _climbrate3s;
-    (int16_t &)_hott_vario_msg.climbrate10s_L = HOTT_OFFSET_CLIMBRATE + _climbrate10s;
+    _hott_vario_msg.climbrate_L    = (HOTT_OFFSET_CLIMBRATE + _climbrate1s);
+    _hott_vario_msg.climbrate_H    = (HOTT_OFFSET_CLIMBRATE + _climbrate1s) >> 8;
+    _hott_vario_msg.climbrate3s_L  = (HOTT_OFFSET_CLIMBRATE + _climbrate3s);
+    _hott_vario_msg.climbrate3s_H  = (HOTT_OFFSET_CLIMBRATE + _climbrate3s) >> 8;
+    _hott_vario_msg.climbrate10s_L = (HOTT_OFFSET_CLIMBRATE + _climbrate10s);
+    _hott_vario_msg.climbrate10s_H = (HOTT_OFFSET_CLIMBRATE + _climbrate10s) >> 8;
 
     // Compass
     _hott_vario_msg.compass_direction = ToDeg(_ahrs.get_compass()->calculate_heading(_ahrs.get_rotation_body_to_ned())) / 2;

@@ -32,6 +32,7 @@
 #define PARAMS_PER_PAGE 6
 #define PARAMS_LINE_OFFSET 1
 
+#define HOTT_NAME "ArduPilot"
 
 AP_HoTT_TextMode::AP_HoTT_TextMode(HOTT_TEXTMODE_MSG &msg):
     _msg(msg),

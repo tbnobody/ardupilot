@@ -23,10 +23,6 @@
 #include <AP_Vehicle/AP_Vehicle.h>
 #include "hott_msgs.h"
 
-#if APM_BUILD_TYPE(APM_BUILD_ArduCopter)
-#define HOTT_NAME "APM:Copter"
-#endif
-
 class AP_HoTT_TextMode {
 public:
     // constructor
