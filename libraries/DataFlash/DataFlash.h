@@ -20,6 +20,7 @@
 #include <DataFlash/LogStructure.h>
 #include <AP_Motors/AP_Motors.h>
 #include <AP_Rally/AP_Rally.h>
+#include <AP_Beacon/AP_Beacon.h>
 #include <stdint.h>
 
 #if CONFIG_HAL_BOARD == HAL_BOARD_PX4
@@ -128,6 +129,7 @@ public:
     bool Log_Write_MavCmd(uint16_t cmd_total, const mavlink_mission_item_t& mav_cmd);
     void Log_Write_Radio(const mavlink_radio_t &packet);
     void Log_Write_Message(const char *message);
+    void Log_Write_MessageF(const char *fmt, ...);
     void Log_Write_CameraInfo(enum LogMessages msg, const AP_AHRS &ahrs, const AP_GPS &gps, const Location &current_loc);
     void Log_Write_Camera(const AP_AHRS &ahrs, const AP_GPS &gps, const Location &current_loc);
     void Log_Write_Trigger(const AP_AHRS &ahrs, const AP_GPS &gps, const Location &current_loc);    
@@ -149,6 +151,9 @@ public:
                         const AC_AttitudeControl &attitude_control,
                         const AC_PosControl &pos_control);
     void Log_Write_Rally(const AP_Rally &rally);
+    void Log_Write_VisualOdom(float time_delta, const Vector3f &angle_delta, const Vector3f &position_delta, float confidence);
+    void Log_Write_AOA_SSA(AP_AHRS &ahrs);
+    void Log_Write_Beacon(AP_Beacon &beacon);
 
     void Log_Write(const char *name, const char *labels, const char *fmt, ...);
 
@@ -267,11 +272,15 @@ private:
     void Log_Write_EKF2(AP_AHRS_NavEKF &ahrs, bool optFlowEnabled);
     void Log_Write_EKF3(AP_AHRS_NavEKF &ahrs, bool optFlowEnabled);
 #endif
-    
+
+    void backend_starting_new_log(const DataFlash_Backend *backend);
+
 private:
     static DataFlash_Class *_instance;
 
     void validate_structures(const struct LogStructure *structures, const uint8_t num_types);
     void dump_structure_field(const struct LogStructure *structure, const char *label, const uint8_t fieldnum);
     void dump_structures(const struct LogStructure *structures, const uint8_t num_types);
+
+    void Log_Write_EKF_Timing(const char *name, uint64_t time_us, const struct ekf_timing &timing);
 };

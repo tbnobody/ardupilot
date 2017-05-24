@@ -277,11 +277,15 @@ void DataFlash_MAVLink::remote_log_block_status_msg(mavlink_channel_t chan,
 {
     mavlink_remote_log_block_status_t packet;
     mavlink_msg_remote_log_block_status_decode(msg, &packet);
+    if (!semaphore->take_nonblocking()) {
+        return;
+    }
     if(packet.status == 0){
         handle_retry(packet.seqno);
     } else{
         handle_ack(chan, msg, packet.seqno);
     }
+    semaphore->give();
 }
 
 void DataFlash_MAVLink::handle_retry(uint32_t seqno)
@@ -295,11 +299,6 @@ void DataFlash_MAVLink::handle_retry(uint32_t seqno)
         _last_response_time = AP_HAL::millis();
         enqueue_block(_blocks_retry, victim);
     }
-}
-
-void DataFlash_MAVLink::set_channel(mavlink_channel_t chan)
-{
-    _chan = chan;
 }
 
 void DataFlash_MAVLink::internal_error() {
@@ -404,6 +403,9 @@ void DataFlash_MAVLink::stats_collect()
     if (!_initialised || !_logging_started) {
         return;
     }
+    if (!semaphore->take_nonblocking()) {
+        return;
+    }
     uint8_t pending = queue_size(_blocks_pending);
     uint8_t sent = queue_size(_blocks_sent);
     uint8_t retry = queue_size(_blocks_retry);
@@ -412,6 +414,8 @@ void DataFlash_MAVLink::stats_collect()
     if (sfree != _blockcount_free) {
         internal_error();
     }
+    semaphore->give();
+
     stats.state_pending += pending;
     stats.state_sent += sent;
     stats.state_free += sfree;
@@ -505,19 +509,27 @@ void DataFlash_MAVLink::do_resends(uint32_t now)
     }
     uint32_t oldest = now - 100; // 100 milliseconds before resend.  Hmm.
     while (count_to_send-- > 0) {
+        if (!semaphore->take_nonblocking()) {
+            return;
+        }
         for (struct dm_block *block=_blocks_sent.oldest; block != nullptr; block=block->next) {
             // only want to send blocks every now-and-then:
             if (block->last_sent < oldest) {
                 if (! send_log_block(*block)) {
                     // failed to send the block; try again later....
+                    semaphore->give();
                     return;
                 }
                 stats.resends++;
             }
         }
+        semaphore->give();
     }
 }
 
+// NOTE: any functions called from these periodic functions MUST
+// handle locking of the blocks structures by taking the semaphore
+// appropriately!
 void DataFlash_MAVLink::periodic_10Hz(const uint32_t now)
 {
     do_resends(now);

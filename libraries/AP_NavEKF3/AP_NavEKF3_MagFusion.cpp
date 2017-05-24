@@ -310,7 +310,7 @@ void NavEKF3_core::SelectMagFusion()
 /*
  * Fuse magnetometer measurements using explicit algebraic equations generated with Matlab symbolic toolbox.
  * The script file used to generate these and other equations in this filter can be found here:
- * https://github.com/priseborough/InertialNav/blob/master/derivations/RotationVectorAttitudeParameterisation/GenerateNavFilterEquations.m
+ * https://github.com/PX4/ecl/blob/master/matlab/scripts/Inertial%20Nav%20EKF/GenerateNavFilterEquations.m
 */
 void NavEKF3_core::FuseMagnetometer()
 {
@@ -695,6 +695,8 @@ void NavEKF3_core::FuseMagnetometer()
             } else if (obsIndex == 2) {
                 faultStatus.bad_zmag = true;
             }
+            CovarianceInit();
+            return;
         }
     }
 }
@@ -703,7 +705,7 @@ void NavEKF3_core::FuseMagnetometer()
 /*
  * Fuse magnetic heading measurement using explicit algebraic equations generated with Matlab symbolic toolbox.
  * The script file used to generate these and other equations in this filter can be found here:
- * https://github.com/priseborough/InertialNav/blob/master/derivations/RotationVectorAttitudeParameterisation/GenerateNavFilterEquations.m
+ * https://github.com/PX4/ecl/blob/master/matlab/scripts/Inertial%20Nav%20EKF/GenerateNavFilterEquations.m
  * This fusion method only modifies the orientation, does not require use of the magnetic field states and is computationally cheaper.
  * It is suitable for use when the external magnetic field environment is disturbed (eg close to metal structures, on ground).
  * It is not as robust to magnetometer failures.
@@ -764,7 +766,7 @@ void NavEKF3_core::fuseEulerYaw()
         Tbn_zeroYaw.from_euler(euler321.x, euler321.y, 0.0f);
 
     } else {
-        // calculate observaton jacobian when we are observing a rotation in a 312 sequence
+        // calculate observation jacobian when we are observing a rotation in a 312 sequence
         float t9 = q0*q3;
         float t10 = q1*q2;
         float t2 = t9-t10;
@@ -806,7 +808,7 @@ void NavEKF3_core::fuseEulerYaw()
     Vector3f magMeasNED = Tbn_zeroYaw*magDataDelayed.mag;
 
     // Use the difference between the horizontal projection and declination to give the measured yaw
-    // If we can't use compass data, set the  meaurement to the predicted
+    // If we can't use compass data, set the  measurement to the predicted
     // to prevent uncontrolled variance growth whilst on ground without magnetometer
     float measured_yaw;
     if (use_compass() && yawAlignComplete) {
@@ -930,7 +932,7 @@ void NavEKF3_core::fuseEulerYaw()
 /*
  * Fuse declination angle using explicit algebraic equations generated with Matlab symbolic toolbox.
  * The script file used to generate these and other equations in this filter can be found here:
- * https://github.com/priseborough/InertialNav/blob/master/derivations/RotationVectorAttitudeParameterisation/GenerateNavFilterEquations.m
+ * https://github.com/PX4/ecl/blob/master/matlab/scripts/Inertial%20Nav%20EKF/GenerateNavFilterEquations.m
  * This is used to prevent the declination of the EKF earth field states from drifting during operation without GPS
  * or some other absolute position or velocity reference
 */
@@ -1117,7 +1119,7 @@ void NavEKF3_core::alignMagStateDeclination()
     }
 }
 
-// record a magentic field state reset event
+// record a magnetic field state reset event
 void NavEKF3_core::recordMagReset()
 {
     magStateInitComplete = true;

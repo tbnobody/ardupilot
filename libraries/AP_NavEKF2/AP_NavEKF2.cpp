@@ -192,7 +192,7 @@ const AP_Param::GroupInfo NavEKF2::var_info[] = {
     // @Range: 0 250
     // @Increment: 10
     // @User: Advanced
-    // @Units: milliseconds
+    // @Units: ms
     AP_GROUPINFO("GPS_DELAY", 8, NavEKF2, _gpsDelay_ms, 220),
 
     // Height measurement parameters
@@ -227,7 +227,7 @@ const AP_Param::GroupInfo NavEKF2::var_info[] = {
     // @Range: 0 250
     // @Increment: 10
     // @User: Advanced
-    // @Units: milliseconds
+    // @Units: ms
     AP_GROUPINFO("HGT_DELAY", 12, NavEKF2, _hgtDelay_ms, 60),
 
     // Magnetometer measurement parameters
@@ -238,7 +238,7 @@ const AP_Param::GroupInfo NavEKF2::var_info[] = {
     // @Range: 0.01 0.5
     // @Increment: 0.01
     // @User: Advanced
-    // @Units: gauss
+    // @Units: Gauss
     AP_GROUPINFO("MAG_M_NSE", 13, NavEKF2, _magNoise, MAG_M_NSE_DEFAULT),
 
     // @Param: MAG_CAL
@@ -328,7 +328,7 @@ const AP_Param::GroupInfo NavEKF2::var_info[] = {
     // @Range: 0 127
     // @Increment: 10
     // @User: Advanced
-    // @Units: milliseconds
+    // @Units: ms
     AP_GROUPINFO("FLOW_DELAY", 23, NavEKF2, _flowDelay_ms, FLOW_MEAS_DELAY),
 
     // State and Covariance Predition Parameters
@@ -364,7 +364,7 @@ const AP_Param::GroupInfo NavEKF2::var_info[] = {
     // @Description: This noise controls the rate of gyro scale factor learning. Increasing it makes rate gyro scale factor estimation faster and noisier.
     // @Range: 0.000001 0.001
     // @User: Advanced
-    // @Units: 1/s
+    // @Units: Hz
     AP_GROUPINFO("GSCL_P_NSE", 27, NavEKF2, _gyroScaleProcessNoise, GSCALE_P_NSE_DEFAULT),
 
     // @Param: ABIAS_P_NSE
@@ -464,7 +464,7 @@ const AP_Param::GroupInfo NavEKF2::var_info[] = {
     // @Description: This state process noise controls the growth of earth magnetic field state error estimates. Increasing it makes earth magnetic field estimation faster and noisier.
     // @Range: 0.00001 0.01
     // @User: Advanced
-    // @Units: gauss/s
+    // @Units: Gauss/s
     AP_GROUPINFO("MAGE_P_NSE", 40, NavEKF2, _magEarthProcessNoise, MAGE_P_NSE_DEFAULT),
 
     // @Param: MAGB_P_NSE
@@ -472,7 +472,7 @@ const AP_Param::GroupInfo NavEKF2::var_info[] = {
     // @Description: This state process noise controls the growth of body magnetic field state error estimates. Increasing it makes magnetometer bias error estimation faster and noisier.
     // @Range: 0.00001 0.01
     // @User: Advanced
-    // @Units: gauss/s
+    // @Units: Gauss/s
     AP_GROUPINFO("MAGB_P_NSE", 41, NavEKF2, _magBodyProcessNoise, MAGB_P_NSE_DEFAULT),
 
     // @Param: RNG_USE_HGT
@@ -515,7 +515,7 @@ const AP_Param::GroupInfo NavEKF2::var_info[] = {
     // @Range: 0 127
     // @Increment: 10
     // @User: Advanced
-    // @Units: milliseconds
+    // @Units: ms
     AP_GROUPINFO("BCN_DELAY", 46, NavEKF2, _rngBcnDelay_ms, 50),
 
     // @Param: RNG_USE_SPD
@@ -609,8 +609,15 @@ bool NavEKF2::InitialiseFilter(void)
     if (_enable == 0) {
         return false;
     }
+    const AP_InertialSensor &ins = _ahrs->get_ins();
 
     imuSampleTime_us = AP_HAL::micros64();
+
+    // remember expected frame time
+    _frameTimeUsec = 1e6 / ins.get_sample_rate();
+
+    // expected number of IMU frames per prediction
+    _framesPerPrediction = uint8_t((EKF_TARGET_DT / (_frameTimeUsec * 1.0e-6) + 0.5));
 
     // see if we will be doing logging
     DataFlash_Class *dataflash = DataFlash_Class::instance();
@@ -621,7 +628,6 @@ bool NavEKF2::InitialiseFilter(void)
     if (core == nullptr) {
 
         // don't run multiple filters for 1 IMU
-        const AP_InertialSensor &ins = _ahrs->get_ins();
         uint8_t mask = (1U<<ins.get_accel_count())-1;
         _imuMask.set(_imuMask.get() & mask);
         
@@ -661,7 +667,7 @@ bool NavEKF2::InitialiseFilter(void)
         primary = 0;
     }
 
-    // initialse the cores. We return success only if all cores
+    // initialise the cores. We return success only if all cores
     // initialise successfully
     bool ret = true;
     for (uint8_t i=0; i<num_cores; i++) {
@@ -690,10 +696,12 @@ void NavEKF2::UpdateFilter(void)
 
     bool statePredictEnabled[num_cores];
     for (uint8_t i=0; i<num_cores; i++) {
-        // if the previous core has only recently finished a new state prediction cycle, then
-        // don't start a new cycle to allow time for fusion operations to complete if the update
-        // rate is higher than 200Hz
-        if ((i > 0) && (core[i-1].getFramesSincePredict() < 2) && (ins.get_sample_rate() > 200)) {
+        // if we have not overrun by more than 3 IMU frames, and we
+        // have already used more than 1/3 of the CPU budget for this
+        // loop then suppress the prediction step. This allows
+        // multiple EKF instances to cooperate on scheduling
+        if (core[i].getFramesSincePredict() < (_framesPerPrediction+3) &&
+            (AP_HAL::micros() - ins.get_last_update_usec()) > _frameTimeUsec/3) {
             statePredictEnabled[i] = false;
         } else {
             statePredictEnabled[i] = true;
@@ -997,7 +1005,7 @@ bool NavEKF2::getOriginLLH(struct Location &loc) const
 // All NED positions calculated by the filter will be relative to this location
 // The origin cannot be set if the filter is in a flight mode (eg vehicle armed)
 // Returns false if the filter has rejected the attempt to set the origin
-bool NavEKF2::setOriginLLH(struct Location &loc)
+bool NavEKF2::setOriginLLH(const Location &loc)
 {
     if (!core) {
         return false;
@@ -1033,10 +1041,11 @@ void NavEKF2::getRotationBodyToNED(Matrix3f &mat) const
 }
 
 // return the quaternions defining the rotation from NED to XYZ (body) axes
-void NavEKF2::getQuaternion(Quaternion &quat) const
+void NavEKF2::getQuaternion(int8_t instance, Quaternion &quat) const
 {
+    if (instance < 0 || instance >= num_cores) instance = primary;
     if (core) {
-        core[primary].getQuaternion(quat);
+        core[instance].getQuaternion(quat);
     }
 }
 
@@ -1445,6 +1454,21 @@ void NavEKF2::updateLaneSwitchPosDownResetData(uint8_t new_primary, uint8_t old_
     pos_down_reset_data.last_primary_change = imuSampleTime_us / 1000;
     pos_down_reset_data.core_changed = true;
 
+}
+
+/*
+  get timing statistics structure
+*/
+void NavEKF2::getTimingStatistics(int8_t instance, struct ekf_timing &timing)
+{
+    if (instance < 0 || instance >= num_cores) {
+        instance = primary;
+    }
+    if (core) {
+        core[instance].getTimingStatistics(timing);
+    } else {
+        memset(&timing, 0, sizeof(timing));
+    }
 }
 
 #endif //HAL_CPU_CLASS

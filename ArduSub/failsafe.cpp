@@ -64,6 +64,89 @@ void Sub::mainloop_failsafe_check()
     }
 }
 
+void Sub::failsafe_sensors_check(void)
+{
+    if (!ap.depth_sensor_present) {
+        return;
+    }
+
+    // We need a depth sensor to do any sort of auto z control
+    if (sensor_health.depth) {
+        failsafe.sensor_health = false;
+        return;
+    }
+
+    // only report once
+    if (failsafe.sensor_health) {
+        return;
+    }
+
+    failsafe.sensor_health = true;
+    gcs_send_text(MAV_SEVERITY_CRITICAL, "Depth sensor error!");
+    Log_Write_Error(ERROR_SUBSYSTEM_FAILSAFE_SENSORS, ERROR_CODE_BAD_DEPTH);
+
+    if (control_mode == ALT_HOLD || control_mode == SURFACE || mode_requires_GPS(control_mode)) {
+        // This should always succeed
+        if (!set_mode(MANUAL, MODE_REASON_BAD_DEPTH)) {
+            // We should never get here
+            init_disarm_motors();
+        }
+    }
+}
+
+void Sub::failsafe_ekf_check(void)
+{
+    static uint32_t last_ekf_good_ms = 0;
+
+    if (g.fs_ekf_action == FS_EKF_ACTION_DISABLED) {
+        last_ekf_good_ms = AP_HAL::millis();
+        failsafe.ekf = false;
+        AP_Notify::flags.ekf_bad = false;
+        return;
+    }
+
+    float posVar, hgtVar, tasVar;
+    Vector3f magVar;
+    Vector2f offset;
+    float compass_variance;
+    float vel_variance;
+    ahrs.get_variances(vel_variance, posVar, hgtVar, magVar, tasVar, offset);
+    compass_variance = magVar.length();
+
+    if (compass_variance < g.fs_ekf_thresh && vel_variance < g.fs_ekf_thresh) {
+        last_ekf_good_ms = AP_HAL::millis();
+        failsafe.ekf = false;
+        AP_Notify::flags.ekf_bad = false;
+        return;;
+    }
+
+    // Bad EKF for 2 solid seconds triggers failsafe
+    if (AP_HAL::millis() < last_ekf_good_ms + 2000) {
+        failsafe.ekf = false;
+        AP_Notify::flags.ekf_bad = false;
+        return;
+    }
+
+    // Only trigger failsafe once
+    if (failsafe.ekf) {
+        return;
+    }
+
+    failsafe.ekf = true;
+    AP_Notify::flags.ekf_bad = true;
+
+    Log_Write_Error(ERROR_SUBSYSTEM_EKFCHECK, ERROR_CODE_EKFCHECK_BAD_VARIANCE);
+
+    if (AP_HAL::millis() > failsafe.last_ekf_warn_ms + 20000) {
+        failsafe.last_ekf_warn_ms = AP_HAL::millis();
+        gcs_send_text(MAV_SEVERITY_WARNING, "EKF bad");
+    }
+
+    if (g.fs_ekf_action == FS_EKF_ACTION_DISARM) {
+        init_disarm_motors();
+    }
+}
+
 // Battery failsafe check
 // Check the battery voltage and remaining capacity
 void Sub::failsafe_battery_check(void)
@@ -110,26 +193,33 @@ void Sub::failsafe_battery_check(void)
     }
 }
 
-// MANUAL_CONTROL failsafe check
-// Make sure that we are receiving MANUAL_CONTROL at an appropriate interval
-void Sub::failsafe_manual_control_check()
+// Make sure that we are receiving pilot input at an appropriate interval
+void Sub::failsafe_pilot_input_check()
 {
 #if CONFIG_HAL_BOARD != HAL_BOARD_SITL
-    uint32_t tnow = AP_HAL::millis();
-
-    // Require at least 0.5 Hz update
-    if (tnow > failsafe.last_manual_control_ms + 2000) {
-        if (!failsafe.manual_control) {
-            failsafe.manual_control = true;
-            set_neutral_controls();
-            init_disarm_motors();
-            Log_Write_Error(ERROR_SUBSYSTEM_INPUT, ERROR_CODE_FAILSAFE_OCCURRED);
-            gcs_send_text(MAV_SEVERITY_CRITICAL, "Lost manual control");
-        }
+    if (g.failsafe_pilot_input == FS_PILOT_INPUT_DISABLED) {
+        failsafe.pilot_input = false;
         return;
     }
 
-    failsafe.manual_control = false;
+    if (AP_HAL::millis() < failsafe.last_pilot_input_ms + g.failsafe_pilot_input_timeout * 1000.0f) {
+        failsafe.pilot_input = false; // We've received an update from the pilot within the timeout period
+        return;
+    }
+
+    if (failsafe.pilot_input) {
+        return; // only act once
+    }
+
+    failsafe.pilot_input = true;
+
+    Log_Write_Error(ERROR_SUBSYSTEM_INPUT, ERROR_CODE_FAILSAFE_OCCURRED);
+    gcs_send_text(MAV_SEVERITY_CRITICAL, "Lost manual control");
+
+    if(g.failsafe_pilot_input == FS_PILOT_INPUT_DISARM) {
+        set_neutral_controls();
+        init_disarm_motors();
+    }
 #endif
 }
 
@@ -202,8 +292,6 @@ void Sub::failsafe_leak_check()
 {
     bool status = leak_detector.get_status();
 
-    AP_Notify::flags.leak_detected = status;
-
     // Do nothing if we are dry, or if leak failsafe action is disabled
     if (status == false || g.failsafe_leak == FS_LEAK_DISABLED) {
         if (failsafe.leak) {
@@ -212,6 +300,8 @@ void Sub::failsafe_leak_check()
         failsafe.leak = false;
         return;
     }
+
+    AP_Notify::flags.leak_detected = status;
 
     uint32_t tnow = AP_HAL::millis();
 

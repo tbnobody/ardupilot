@@ -189,7 +189,11 @@ void Copter::init_ardupilot()
     // allocate the motors class
     allocate_motors();
 
-    init_rc_out();              // sets up motors and output to escs
+    // sets up motors and output to escs
+    init_rc_out();
+
+    // motors initialised so parameters can be sent
+    ap.initialised_params = true;
 
     // initialise which outputs Servo and Relay events can use
     ServoRelayEvents.set_channel_mask(~motors->get_motor_mask());
@@ -202,7 +206,7 @@ void Copter::init_ardupilot()
      */
     hal.scheduler->register_timer_failsafe(failsafe_check_static, 1000);
 
-    // give AHRS the rnage beacon sensor
+    // give AHRS the range beacon sensor
     ahrs.set_beacon(&g2.beacon);
 
     // Do GPS init
@@ -284,11 +288,18 @@ void Copter::init_ardupilot()
     // init beacons used for non-gps position estimation
     init_beacon();
 
+    // init visual odometry
+    init_visual_odom();
+
     // initialise AP_RPM library
     rpm_sensor.init();
 
     // initialise mission library
     mission.init();
+
+    // initialise DataFlash library
+    DataFlash.set_mission(&mission);
+    DataFlash.setVehicle_Startup_Log_Writer(FUNCTOR_BIND(&copter, &Copter::Log_Write_Vehicle_Startup_Messages, void));
 
     // initialise the flight mode and aux switch
     // ---------------------------
@@ -311,6 +322,15 @@ void Copter::init_ardupilot()
 
     ins.set_raw_logging(should_log(MASK_LOG_IMU_RAW));
     ins.set_dataflash(&DataFlash);
+
+    // enable output to motors
+    arming.pre_arm_rc_checks(true);
+    if (ap.pre_arm_rc_check) {
+        enable_motor_output();
+    }
+
+    // disable safety if requested
+    BoardConfig.init_safety();    
 
     cliSerial->printf("\nReady to FLY ");
 
@@ -385,11 +405,27 @@ bool Copter::ekf_position_ok()
 // optflow_position_ok - returns true if optical flow based position estimate is ok
 bool Copter::optflow_position_ok()
 {
-#if OPTFLOW != ENABLED
+#if OPTFLOW != ENABLED && VISUAL_ODOMETRY_ENABLED != ENABLED
     return false;
 #else
-    // return immediately if optflow is not enabled or EKF not used
-    if (!optflow.enabled() || !ahrs.have_inertial_nav()) {
+    // return immediately if EKF not used
+    if (!ahrs.have_inertial_nav()) {
+        return false;
+    }
+
+    // return immediately if neither optflow nor visual odometry is enabled
+    bool enabled = false;
+#if OPTFLOW == ENABLED
+    if (optflow.enabled()) {
+        enabled = true;
+    }
+#endif
+#if VISUAL_ODOMETRY_ENABLED == ENABLED
+    if (g2.visual_odom.enabled()) {
+        enabled = true;
+    }
+#endif
+    if (!enabled) {
         return false;
     }
 

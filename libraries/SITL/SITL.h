@@ -9,6 +9,7 @@ namespace SITL {
 struct sitl_fdm {
     // this is the structure passed between FDM models and the main SITL code
     uint64_t timestamp_us;
+    Location home;
     double latitude, longitude; // degrees
     double altitude;  // MSL
     double heading;   // degrees
@@ -16,6 +17,7 @@ struct sitl_fdm {
     double xAccel, yAccel, zAccel;       // m/s/s in body frame
     double rollRate, pitchRate, yawRate; // degrees/s/s in body frame
     double rollDeg, pitchDeg, yawDeg;    // euler angles, degrees
+    Quaternion quaternion;
     double airspeed; // m/s
     double battery_voltage; // Volts
     double battery_current; // Amps
@@ -37,6 +39,7 @@ public:
         // set a default compass offset
         mag_ofs.set(Vector3f(5, 13, -18));
         AP_Param::setup_object_defaults(this, var_info);
+        AP_Param::setup_object_defaults(this, var_info2);
     }
 
     enum GPSType {
@@ -49,6 +52,7 @@ public:
         GPS_TYPE_SBP   = 6,
         GPS_TYPE_FILE  = 7,
         GPS_TYPE_NOVA  = 8,
+        GPS_TYPE_SBP2   = 9,
     };
 
     struct sitl_fdm state;
@@ -63,6 +67,7 @@ public:
     float height_agl;
     
     static const struct AP_Param::GroupInfo var_info[];
+    static const struct AP_Param::GroupInfo var_info2[];
 
     // noise levels for simulated sensors
     AP_Float baro_noise;  // in metres
@@ -96,6 +101,7 @@ public:
     AP_Int8  gps2_enable; // enable 2nd simulated GPS
     AP_Int8  gps_delay;   // delay in samples
     AP_Int8  gps_type;    // see enum GPSType
+    AP_Int8  gps2_type;   // see enum GPSType
     AP_Float gps_byteloss;// byte loss as a percent
     AP_Int8  gps_numsats; // number of visible satellites
     AP_Vector3f gps_glitch;  // glitch offsets in lat, lon and altitude
@@ -112,7 +118,8 @@ public:
     AP_Int8  terrain_enable; // enable using terrain for height
     AP_Int8  pin_mask; // for GPIO emulation
     AP_Float speedup; // simulation speedup
-
+    AP_Int8  odom_enable; // enable visual odomotry data
+    
     // wind control
     float wind_speed_active;
     float wind_direction_active;
@@ -141,6 +148,12 @@ public:
     AP_Vector3f rngfnd_pos_offset;  // XYZ position of the range finder zero range datum relative to the body frame origin (m)
     AP_Vector3f optflow_pos_offset; // XYZ position of the optical flow sensor focal point relative to the body frame origin (m)
 
+    // temperature control
+    AP_Float temp_start;
+    AP_Float temp_flight;
+    AP_Float temp_tconst;
+    AP_Float temp_baro_factor;
+    
     uint16_t irlock_port;
 
     void simstate_send(mavlink_channel_t chan);

@@ -1,19 +1,11 @@
 #include "Sub.h"
 
-/*
- * flight.pde - high level calls to set and update flight modes
- *      logic for individual flight modes is in control_acro.pde, control_stabilize.pde, etc
- */
-
-// set_mode - change flight mode and perform any necessary initialisation
-// optional force parameter used to force the flight mode change (used only first time mode is set)
+// change flight mode and perform any necessary initialisation
 // returns true if mode was succesfully set
-// ACRO, STABILIZE, ALTHOLD, LAND, DRIFT and SPORT can always be set successfully but the return state of other flight modes should be checked and the caller should deal with failures appropriately
 bool Sub::set_mode(control_mode_t mode, mode_reason_t reason)
 {
     // boolean to record if flight mode could be set
     bool success = false;
-    bool ignore_checks = false; // Always check for now
 
     // return immediately if we are already in the desired mode
     if (mode == control_mode) {
@@ -26,41 +18,41 @@ bool Sub::set_mode(control_mode_t mode, mode_reason_t reason)
 
     switch (mode) {
     case ACRO:
-        success = acro_init(ignore_checks);
+        success = acro_init();
         break;
 
     case STABILIZE:
-        success = stabilize_init(ignore_checks);
+        success = stabilize_init();
         break;
 
     case ALT_HOLD:
-        success = althold_init(ignore_checks);
+        success = althold_init();
         break;
 
     case AUTO:
-        success = auto_init(ignore_checks);
+        success = auto_init();
         break;
 
     case CIRCLE:
-        success = circle_init(ignore_checks);
+        success = circle_init();
         break;
 
     case GUIDED:
-        success = guided_init(ignore_checks);
+        success = guided_init();
         break;
 
     case SURFACE:
-        success = surface_init(ignore_checks);
+        success = surface_init();
         break;
 
 #if POSHOLD_ENABLED == ENABLED
     case POSHOLD:
-        success = poshold_init(ignore_checks);
+        success = poshold_init();
         break;
 #endif
 
     case MANUAL:
-        success = manual_init(ignore_checks);
+        success = manual_init();
         break;
 
     default:
@@ -80,6 +72,9 @@ bool Sub::set_mode(control_mode_t mode, mode_reason_t reason)
         control_mode_reason = reason;
         DataFlash.Log_Write_Mode(control_mode, control_mode_reason);
 
+        // update notify object
+        notify_flight_mode(control_mode);
+
 #if AC_FENCE == ENABLED
         // pilot requested flight mode change during a fence breach indicates pilot is attempting to manually recover
         // this flight mode change could be automatic (i.e. fence, battery, GPS or GCS failsafe)
@@ -89,11 +84,6 @@ bool Sub::set_mode(control_mode_t mode, mode_reason_t reason)
     } else {
         // Log error that we failed to enter desired flight mode
         Log_Write_Error(ERROR_SUBSYSTEM_FLIGHT_MODE,mode);
-    }
-
-    // update notify object
-    if (success) {
-        notify_flight_mode(control_mode);
     }
 
     // return success or failure

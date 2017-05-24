@@ -219,7 +219,7 @@ const AP_Param::GroupInfo NavEKF3::var_info[] = {
     // @Increment: 10
     // @RebootRequired: True
     // @User: Advanced
-    // @Units: milliseconds
+    // @Units: ms
     AP_GROUPINFO("HGT_DELAY", 12, NavEKF3, _hgtDelay_ms, 60),
 
     // Magnetometer measurement parameters
@@ -230,7 +230,7 @@ const AP_Param::GroupInfo NavEKF3::var_info[] = {
     // @Range: 0.01 0.5
     // @Increment: 0.01
     // @User: Advanced
-    // @Units: gauss
+    // @Units: Gauss
     AP_GROUPINFO("MAG_M_NSE", 13, NavEKF3, _magNoise, MAG_M_NSE_DEFAULT),
 
     // @Param: MAG_CAL
@@ -321,7 +321,7 @@ const AP_Param::GroupInfo NavEKF3::var_info[] = {
     // @Increment: 10
     // @RebootRequired: True
     // @User: Advanced
-    // @Units: milliseconds
+    // @Units: ms
     AP_GROUPINFO("FLOW_DELAY", 23, NavEKF3, _flowDelay_ms, FLOW_MEAS_DELAY),
 
     // State and Covariance Predition Parameters
@@ -451,7 +451,7 @@ const AP_Param::GroupInfo NavEKF3::var_info[] = {
     // @Description: This state process noise controls the growth of earth magnetic field state error estimates. Increasing it makes earth magnetic field estimation faster and noisier.
     // @Range: 0.00001 0.01
     // @User: Advanced
-    // @Units: gauss/s
+    // @Units: Gauss/s
     AP_GROUPINFO("MAGE_P_NSE", 40, NavEKF3, _magEarthProcessNoise, MAGE_P_NSE_DEFAULT),
 
     // @Param: MAGB_P_NSE
@@ -459,7 +459,7 @@ const AP_Param::GroupInfo NavEKF3::var_info[] = {
     // @Description: This state process noise controls the growth of body magnetic field state error estimates. Increasing it makes magnetometer bias error estimation faster and noisier.
     // @Range: 0.00001 0.01
     // @User: Advanced
-    // @Units: gauss/s
+    // @Units: Gauss/s
     AP_GROUPINFO("MAGB_P_NSE", 41, NavEKF3, _magBodyProcessNoise, MAGB_P_NSE_DEFAULT),
 
     // @Param: RNG_USE_HGT
@@ -503,7 +503,7 @@ const AP_Param::GroupInfo NavEKF3::var_info[] = {
     // @Increment: 10
     // @RebootRequired: True
     // @User: Advanced
-    // @Units: milliseconds
+    // @Units: ms
     AP_GROUPINFO("BCN_DELAY", 46, NavEKF3, _rngBcnDelay_ms, 50),
 
     // @Param: RNG_USE_SPD
@@ -607,9 +607,16 @@ bool NavEKF3::InitialiseFilter(void)
     if (_enable == 0) {
         return false;
     }
+    const AP_InertialSensor &ins = _ahrs->get_ins();
 
     imuSampleTime_us = AP_HAL::micros64();
 
+    // remember expected frame time
+    _frameTimeUsec = 1e6 / ins.get_sample_rate();
+
+    // expected number of IMU frames per prediction
+    _framesPerPrediction = uint8_t((EKF_TARGET_DT / (_frameTimeUsec * 1.0e-6) + 0.5));
+    
     if (core == nullptr) {
 
         // see if we will be doing logging
@@ -619,7 +626,6 @@ bool NavEKF3::InitialiseFilter(void)
         }
 
         // don't run multiple filters for 1 IMU
-        const AP_InertialSensor &ins = _ahrs->get_ins();
         uint8_t mask = (1U<<ins.get_accel_count())-1;
         _imuMask.set(_imuMask.get() & mask);
         
@@ -705,10 +711,12 @@ void NavEKF3::UpdateFilter(void)
 
     bool statePredictEnabled[num_cores];
     for (uint8_t i=0; i<num_cores; i++) {
-        // if the previous core has only recently finished a new state prediction cycle, then
-        // don't start a new cycle to allow time for fusion operations to complete if the update
-        // rate is higher than 200Hz
-        if ((i > 0) && (core[i-1].getFramesSincePredict() < 2) && (ins.get_sample_rate() > 200)) {
+        // if we have not overrun by more than 3 IMU frames, and we
+        // have already used more than 1/3 of the CPU budget for this
+        // loop then suppress the prediction step. This allows
+        // multiple EKF instances to cooperate on scheduling
+        if (core[i].getFramesSincePredict() < (_framesPerPrediction+3) &&
+            (AP_HAL::micros() - ins.get_last_update_usec()) > _frameTimeUsec/3) {
             statePredictEnabled[i] = false;
         } else {
             statePredictEnabled[i] = true;
@@ -1001,7 +1009,7 @@ bool NavEKF3::getOriginLLH(struct Location &loc) const
 // All NED positions calculated by the filter will be relative to this location
 // The origin cannot be set if the filter is in a flight mode (eg vehicle armed)
 // Returns false if the filter has rejected the attempt to set the origin
-bool NavEKF3::setOriginLLH(struct Location &loc)
+bool NavEKF3::setOriginLLH(const Location &loc)
 {
     if (!core) {
         return false;
@@ -1037,10 +1045,11 @@ void NavEKF3::getRotationBodyToNED(Matrix3f &mat) const
 }
 
 // return the quaternions defining the rotation from NED to XYZ (body) axes
-void NavEKF3::getQuaternion(Quaternion &quat) const
+void NavEKF3::getQuaternion(int8_t instance, Quaternion &quat) const
 {
+    if (instance < 0 || instance >= num_cores) instance = primary;
     if (core) {
-        core[primary].getQuaternion(quat);
+        core[instance].getQuaternion(quat);
     }
 }
 
@@ -1105,6 +1114,40 @@ void NavEKF3::getFlowDebug(int8_t instance, float &varFlow, float &gndOffset, fl
     if (core) {
         core[instance].getFlowDebug(varFlow, gndOffset, flowInnovX, flowInnovY, auxInnov, HAGL, rngInnov, range, gndOffsetErr);
     }
+}
+
+/*
+ * Write body frame linear and angular displacement measurements from a visual odometry sensor
+ *
+ * quality is a normalised confidence value from 0 to 100
+ * delPos is the XYZ change in linear position measured in body frame and relative to the inertial reference at timeStamp_ms (m)
+ * delAng is the XYZ angular rotation measured in body frame and relative to the inertial reference at timeStamp_ms (rad)
+ * delTime is the time interval for the measurement of delPos and delAng (sec)
+ * timeStamp_ms is the timestamp of the last image used to calculate delPos and delAng (msec)
+ * posOffset is the XYZ body frame position of the camera focal point (m)
+*/
+void NavEKF3::writeBodyFrameOdom(float quality, const Vector3f &delPos, const Vector3f &delAng, float delTime, uint32_t timeStamp_ms, const Vector3f &posOffset)
+{
+    if (core) {
+        for (uint8_t i=0; i<num_cores; i++) {
+            core[i].writeBodyFrameOdom(quality, delPos, delAng, delTime, timeStamp_ms, posOffset);
+        }
+    }
+}
+
+// return data for debugging body frame odometry fusion
+uint32_t NavEKF3::getBodyFrameOdomDebug(int8_t instance, Vector3f &velInnov, Vector3f &velInnovVar)
+{
+    uint32_t ret = 0;
+    if (instance < 0 || instance >= num_cores) {
+        instance = primary;
+    }
+
+    if (core) {
+        ret = core[instance].getBodyFrameOdomDebug(velInnov, velInnovVar);
+    }
+
+    return ret;
 }
 
 // return data for debugging range beacon fusion
@@ -1450,6 +1493,21 @@ void NavEKF3::updateLaneSwitchPosDownResetData(uint8_t new_primary, uint8_t old_
     pos_down_reset_data.last_primary_change = imuSampleTime_us / 1000;
     pos_down_reset_data.core_changed = true;
 
+}
+
+/*
+  get timing statistics structure
+*/
+void NavEKF3::getTimingStatistics(int8_t instance, struct ekf_timing &timing)
+{
+    if (instance < 0 || instance >= num_cores) {
+        instance = primary;
+    }
+    if (core) {
+        core[instance].getTimingStatistics(timing);
+    } else {
+        memset(&timing, 0, sizeof(timing));
+    }
 }
 
 #endif //HAL_CPU_CLASS

@@ -260,6 +260,7 @@ bool GCS_MAVLINK_Tracker::try_send_message(enum ap_message id)
     case MSG_RANGEFINDER:
     case MSG_TERRAIN:
     case MSG_BATTERY2:
+    case MSG_BATTERY_STATUS:
     case MSG_CAMERA_FEEDBACK:
     case MSG_MOUNT_STATUS:
     case MSG_OPTICAL_FLOW:
@@ -270,6 +271,8 @@ bool GCS_MAVLINK_Tracker::try_send_message(enum ap_message id)
     case MSG_RPM:
     case MSG_MISSION_ITEM_REACHED:
     case MSG_POSITION_TARGET_GLOBAL_INT:
+    case MSG_AOA_SSA:
+    case MSG_LANDING:
         break; // just here to prevent a warning
     }
     return true;
@@ -366,14 +369,7 @@ const AP_Param::GroupInfo GCS_MAVLINK::var_info[] = {
 void
 GCS_MAVLINK_Tracker::data_stream_send(void)
 {
-    if (_queued_parameter != nullptr) {
-        if (streamRates[STREAM_PARAMS].get() <= 0) {
-            streamRates[STREAM_PARAMS].set(10);
-        }
-        if (stream_trigger(STREAM_PARAMS)) {
-            send_message(MSG_NEXT_PARAM);
-        }
-    }
+    send_queued_parameters();
 
     if (tracker.in_mavlink_delay) {
         // don't send any other stream types while in the delay callback
@@ -798,7 +794,8 @@ mission_failed:
             chan,
             msg->sysid,
             msg->compid,
-            result);
+            result,
+            MAV_MISSION_TYPE_MISSION);
         break;
     }
 

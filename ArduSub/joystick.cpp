@@ -117,8 +117,7 @@ void Sub::transform_manual_control_to_rc_override(int16_t x, int16_t y, int16_t 
     y_last = y;
     z_last = z;
 
-    // record that rc are overwritten so we can trigger a failsafe if we lose contact with groundstation
-    failsafe.rc_override_active = hal.rcin->set_overrides(channels, 10);
+    hal.rcin->set_overrides(channels, 10);
 }
 
 void Sub::handle_jsbutton_press(uint8_t button, bool shift, bool held)
@@ -530,10 +529,10 @@ JSButton* Sub::get_button(uint8_t index)
 void Sub::default_js_buttons()
 {
     JSButton::button_function_t defaults[16][2] = {
-        {JSButton::button_function_t::k_mode_manual,                   JSButton::button_function_t::k_none},
-        {JSButton::button_function_t::k_mode_stabilize,                 JSButton::button_function_t::k_none},
-        {JSButton::button_function_t::k_mode_depth_hold,                 JSButton::button_function_t::k_none},
-        {JSButton::button_function_t::k_none,                 JSButton::button_function_t::k_none},
+        {JSButton::button_function_t::k_none,                   JSButton::button_function_t::k_none},
+        {JSButton::button_function_t::k_mode_manual,            JSButton::button_function_t::k_none},
+        {JSButton::button_function_t::k_mode_depth_hold,        JSButton::button_function_t::k_none},
+        {JSButton::button_function_t::k_mode_stabilize,         JSButton::button_function_t::k_none},
 
         {JSButton::button_function_t::k_disarm,                 JSButton::button_function_t::k_none},
         {JSButton::button_function_t::k_shift,                  JSButton::button_function_t::k_none},
@@ -560,15 +559,15 @@ void Sub::set_neutral_controls()
 {
     int16_t channels[11];
 
-    for (uint8_t i = 0; i < 7; i++) {
+    for (uint8_t i = 0; i < 6; i++) {
         channels[i] = 1500;
     }
 
-    for (uint8_t i = 7; i < 11; i++) {
+    for (uint8_t i = 6; i < 11; i++) {
         channels[i] = 0xffff;
     }
 
     channels[4] = 0xffff; // Leave mode switch where it was
 
-    failsafe.rc_override_active = hal.rcin->set_overrides(channels, 10);
+    hal.rcin->set_overrides(channels, 10);
 }

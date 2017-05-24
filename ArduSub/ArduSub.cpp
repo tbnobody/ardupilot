@@ -39,13 +39,14 @@ const AP_Scheduler::Task Sub::scheduler_tasks[] = {
     SCHED_TASK(barometer_accumulate,  50,     90),
     SCHED_TASK(update_notify,         50,     90),
     SCHED_TASK(one_hz_loop,            1,    100),
-    SCHED_TASK(ekf_check,             10,     75),
     SCHED_TASK(gcs_check_input,      400,    180),
     SCHED_TASK(gcs_send_heartbeat,     1,    110),
     SCHED_TASK(gcs_send_deferred,     50,    550),
     SCHED_TASK(gcs_data_stream_send,  50,    550),
     SCHED_TASK(update_mount,          50,     75),
+#if CAMERA == ENABLED
     SCHED_TASK(update_trigger,        50,     75),
+#endif
     SCHED_TASK(ten_hz_logging_loop,   10,    350),
     SCHED_TASK(twentyfive_hz_logging, 25,    110),
     SCHED_TASK(dataflash_periodic,    400,    300),
@@ -79,8 +80,6 @@ const AP_Scheduler::Task Sub::scheduler_tasks[] = {
 
 void Sub::setup()
 {
-    cliSerial = hal.console;
-
     // Load the default values of variables listed in var_info[]s
     AP_Param::setup_sketch_defaults();
 
@@ -118,7 +117,7 @@ void Sub::perf_update(void)
         Log_Write_Performance();
     }
     if (scheduler.debug()) {
-        gcs_send_text_fmt(MAV_SEVERITY_WARNING, "PERF: %u/%u %lu %lu\n",
+        gcs_send_text_fmt(MAV_SEVERITY_WARNING, "PERF: %u/%u %lu %lu",
                           (unsigned)perf_info_get_num_long_running(),
                           (unsigned)perf_info_get_num_loops(),
                           (unsigned long)perf_info_get_max_time(),
@@ -210,17 +209,21 @@ void Sub::fast_loop()
 // 50 Hz tasks
 void Sub::fifty_hz_loop()
 {
-    // check auto_armed status
-    update_auto_armed();
-
     // check pilot input failsafe
-    failsafe_manual_control_check();
+    failsafe_pilot_input_check();
 
     failsafe_crash_check();
 
+    failsafe_ekf_check();
+
+    failsafe_sensors_check();
+
     // Update servo output
     RC_Channels::set_pwm_all();
-    SRV_Channels::limit_slew_rate(SRV_Channel::k_mount_tilt, g.cam_slew_limit, 0.02f);
+    // wait for outputs to initialize: TODO find a better way to do this
+    if (millis() > 10000) {
+        SRV_Channels::limit_slew_rate(SRV_Channel::k_mount_tilt, g.cam_slew_limit, 0.02f);
+    }
     SRV_Channels::output_ch_all();
 }
 
@@ -241,11 +244,10 @@ void Sub::update_mount()
 #endif
 }
 
-
+#if CAMERA == ENABLED
 // update camera trigger
 void Sub::update_trigger(void)
 {
-#if CAMERA == ENABLED
     camera.trigger_pic_cleanup();
     if (camera.check_trigger_pin()) {
         gcs_send_message(MSG_CAMERA_FEEDBACK);
@@ -253,8 +255,8 @@ void Sub::update_trigger(void)
             DataFlash.Log_Write_Camera(ahrs, gps, current_loc);
         }
     }
-#endif
 }
+#endif
 
 // update_batt_compass - read battery and compass
 // should be called at 10hz
@@ -363,7 +365,9 @@ void Sub::three_hz_loop()
 // one_hz_loop - runs at 1Hz
 void Sub::one_hz_loop()
 {
-    AP_Notify::flags.pre_arm_check = arming.pre_arm_checks(false);
+    bool arm_check = arming.pre_arm_checks(false);
+    ap.pre_arm_check = arm_check;
+    AP_Notify::flags.pre_arm_check = arm_check;
     AP_Notify::flags.pre_arm_gps_check = position_ok();
 
     if (should_log(MASK_LOG_ANY)) {
@@ -380,8 +384,6 @@ void Sub::one_hz_loop()
 
     // update assigned functions and enable auxiliary servos
     SRV_Channels::enable_aux_servos();
-
-    check_usb_mux();
 
     // update position controller alt limits
     update_poscon_alt_max();

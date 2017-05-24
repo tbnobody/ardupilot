@@ -19,7 +19,6 @@ extern const AP_HAL::HAL& hal;
 
 class DataFlash_MAVLink : public DataFlash_Backend
 {
-    friend class DataFlash_Class; // for access to stats on Log_Df_Mav_Stats
 public:
     // constructor
     DataFlash_MAVLink(DataFlash_Class &front, DFMessageWriter_DFLogStart *writer) :
@@ -80,7 +79,6 @@ private:
     void handle_ack(mavlink_channel_t chan, mavlink_message_t* msg, uint32_t seqno);
     void handle_retry(uint32_t block_num);
     void do_resends(uint32_t now);
-    void set_channel(mavlink_channel_t chan);
     void free_all_blocks();
 
     // a stack for free blocks, queues for pending, sent, retries and sent
@@ -125,7 +123,6 @@ private:
     bool logging_enabled() const override { return true; }
     bool logging_failed() const override;
 
-private:
     mavlink_channel_t _chan;
     uint8_t _target_system_id;
     uint8_t _target_component_id;

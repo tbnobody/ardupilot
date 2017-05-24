@@ -91,6 +91,7 @@
 #include <AC_InputManager/AC_InputManager_Heli.h>   // Heli specific pilot input handling library
 #include <AP_Button/AP_Button.h>
 #include <AP_Arming/AP_Arming.h>
+#include <AP_VisualOdom/AP_VisualOdom.h>
 
 // Configuration
 #include "defines.h"
@@ -151,6 +152,16 @@ public:
     // HAL::Callbacks implementation.
     void setup() override;
     void loop() override;
+
+    enum AUTOTUNE_LEVEL_ISSUE {
+        AUTOTUNE_LEVEL_ISSUE_NONE,
+        AUTOTUNE_LEVEL_ISSUE_ANGLE_ROLL,
+        AUTOTUNE_LEVEL_ISSUE_ANGLE_PITCH,
+        AUTOTUNE_LEVEL_ISSUE_ANGLE_YAW,
+        AUTOTUNE_LEVEL_ISSUE_RATE_ROLL,
+        AUTOTUNE_LEVEL_ISSUE_RATE_PITCH,
+        AUTOTUNE_LEVEL_ISSUE_RATE_YAW,
+    };
 
 private:
     // key aircraft parameters passed to multiple libraries
@@ -276,6 +287,7 @@ private:
             uint8_t land_repo_active        : 1; // 22      // true if the pilot is overriding the landing position
             uint8_t motor_interlock_switch  : 1; // 23      // true if pilot is requesting motor interlock enable
             uint8_t in_arming_delay         : 1; // 24      // true while we are armed but waiting to spin motors
+            uint8_t initialised_params      : 1; // 25      // true when the all parameters have been initialised. we cannot send parameters to the GCS until this is done
         };
         uint32_t value;
     } ap;
@@ -595,7 +607,15 @@ private:
 
     // last valid RC input time
     uint32_t last_radio_update_ms;
-    
+
+    // last esc calibration notification update
+    uint32_t esc_calibration_notify_update_ms;
+
+#if VISUAL_ODOMETRY_ENABLED == ENABLED
+    // last visual odometry update time
+    uint32_t visual_odom_last_update_ms;
+#endif
+
     // Top-level logic
     // setup the var_info table
     AP_Param param_loader;
@@ -700,6 +720,8 @@ private:
     void stats_update();
     void init_beacon();
     void update_beacon();
+    void init_visual_odom();
+    void update_visual_odom();
     void send_pid_tuning(mavlink_channel_t chan);
     void gcs_send_message(enum ap_message id);
     void gcs_send_mission_item_reached_message(uint16_t mission_index);
@@ -811,6 +833,7 @@ private:
     void autotune_stop();
     bool autotune_start(bool ignore_checks);
     void autotune_run();
+    bool autotune_currently_level();
     void autotune_attitude_control();
     void autotune_backup_gains_and_initialise();
     void autotune_load_orig_gains();
@@ -831,6 +854,13 @@ private:
     void autotune_twitching_measure_acceleration(float &rate_of_change, float rate_measurement, float &rate_measurement_max);
     void autotune_get_poshold_attitude(float &roll_cd, float &pitch_cd, float &yaw_cd);
     void avoidance_adsb_update(void);
+    void autotune_send_step_string();
+    const char *autotune_level_issue_string() const;
+    const char * autotune_type_string() const;
+    void autotune_announce_state_to_gcs();
+    void autotune_do_gcs_announcements();
+    bool autotune_check_level(const enum AUTOTUNE_LEVEL_ISSUE issue, const float current, const float maximum) const;
+
 #if ADVANCED_FAILSAFE == ENABLED
     void afs_fs_check(void);
 #endif
@@ -939,6 +969,7 @@ private:
     void esc_calibration_startup_check();
     void esc_calibration_passthrough();
     void esc_calibration_auto();
+    void esc_calibration_notify();
     bool should_disarm_on_failsafe();
     void failsafe_radio_on_event();
     void failsafe_radio_off_event();

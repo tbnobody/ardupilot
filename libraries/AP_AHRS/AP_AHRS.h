@@ -420,6 +420,11 @@ public:
         return false;
     }
 
+    // return secondary attitude solution if available, as quaternion
+    virtual bool get_secondary_quaternion(Quaternion &quat) {
+        return false;
+    }
+    
     // return secondary position solution if available
     virtual bool get_secondary_position(struct Location &loc) {
         return false;
@@ -435,6 +440,11 @@ public:
     // when the vehicle is at this position. It is assumed that the
     // current barometer and GPS altitudes correspond to this altitude
     virtual void set_home(const Location &loc) = 0;
+
+    // set the EKF's origin location in 10e7 degrees.  This should only
+    // be called when the EKF has no absolute position reference (i.e. GPS)
+    // from which to decide the origin on its own
+    virtual bool set_origin(const Location &loc) { return false; }
 
     // return true if the AHRS object supports inertial navigation,
     // with very accurate position and velocity
@@ -510,6 +520,14 @@ public:
     // create a view
     AP_AHRS_View *create_view(enum Rotation rotation);
     
+    // return calculated AOA
+    float getAOA(void);
+
+    // return calculated SSA
+    float getSSA(void);
+
+    virtual void update_AOA_SSA(void);
+
 protected:
     AHRS_VehicleClass _vehicle_class;
 
@@ -602,6 +620,10 @@ protected:
 
     // optional view class
     AP_AHRS_View *_view;
+
+    // AOA and SSA
+    float _AOA, _SSA;
+    uint32_t _last_AOA_update_ms;
 };
 
 #include "AP_AHRS_DCM.h"

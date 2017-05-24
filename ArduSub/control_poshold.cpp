@@ -7,10 +7,10 @@
 #if POSHOLD_ENABLED == ENABLED
 
 // poshold_init - initialise PosHold controller
-bool Sub::poshold_init(bool ignore_checks)
+bool Sub::poshold_init()
 {
     // fail to initialise PosHold mode if no GPS lock
-    if (!position_ok() && !ignore_checks) {
+    if (!position_ok()) {
         return false;
     }
 
@@ -36,13 +36,9 @@ bool Sub::poshold_init(bool ignore_checks)
 void Sub::poshold_run()
 {
     uint32_t tnow = AP_HAL::millis();
-    // convert inertial nav earth-frame velocities to body-frame
-    //    const Vector3f& vel = inertial_nav.get_velocity();
-    //    float vel_fw = vel.x*ahrs.cos_yaw() + vel.y*ahrs.sin_yaw();
-    //    float vel_right = -vel.x*ahrs.sin_yaw() + vel.y*ahrs.cos_yaw();
-
-    // if not auto armed or motor interlock not enabled set throttle to zero and exit immediately
-    if (!motors.armed() || !ap.auto_armed || !motors.get_interlock()) {
+    
+    // if not armed set throttle to zero and exit immediately
+    if (!motors.armed()) {
         motors.set_desired_spool_state(AP_Motors::DESIRED_SPIN_WHEN_ARMED);
         wp_nav.init_loiter_target();
         attitude_control.set_throttle_out_unstabilized(0,true,g.throttle_filt);

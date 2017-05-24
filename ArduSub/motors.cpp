@@ -12,6 +12,7 @@ void Sub::enable_motor_output()
 //  returns false if arming failed because of pre-arm checks, arming checks or a gyro calibration failure
 bool Sub::init_arm_motors(bool arming_from_gcs)
 {
+    start_logging();
     static bool in_arm_motors = false;
 
     // exit immediately if already in this function
@@ -26,6 +27,9 @@ bool Sub::init_arm_motors(bool arming_from_gcs)
         in_arm_motors = false;
         return false;
     }
+
+    // let dataflash know that we're armed (it may open logs e.g.)
+    DataFlash_Class::instance()->set_vehicle_armed(true);
 
     // disable cpu failsafe because initialising everything takes a while
     mainloop_failsafe_disable();
@@ -114,9 +118,12 @@ void Sub::init_disarm_motors()
     // reset the mission
     mission.reset();
 
-    // suspend logging
-    if (!DataFlash.log_while_disarmed()) {
-        DataFlash.EnableWrites(false);
+    DataFlash_Class::instance()->set_vehicle_armed(false);
+
+    if (DataFlash.log_while_disarmed()) {
+        start_logging(); // create a new log if necessary
+    } else {
+        DataFlash.EnableWrites(false); // suspend logging
     }
 
     // disable gps velocity based centrefugal force compensation
@@ -130,16 +137,9 @@ void Sub::motors_output()
     // check if we are performing the motor test
     if (ap.motor_test) {
         return; // Placeholder
-    } else {
-        if (!ap.using_interlock) {
-            // if not using interlock switch, set according to Emergency Stop status
-            // where Emergency Stop is forced false during arming if Emergency Stop switch
-            // is not used. Interlock enabled means motors run, so we must
-            // invert motor_emergency_stop status for motors to run.
-            motors.set_interlock(!ap.motor_emergency_stop);
-        }
-        motors.output();
     }
+    motors.set_interlock(true);
+    motors.output();
 }
 
 // translate wpnav roll/pitch outputs to lateral/forward

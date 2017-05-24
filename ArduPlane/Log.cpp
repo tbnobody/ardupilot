@@ -160,8 +160,15 @@ void Plane::Log_Write_Attitude(void)
     Vector3f targets;       // Package up the targets into a vector for commonality with Copter usage of Log_Wrote_Attitude
     targets.x = nav_roll_cd;
     targets.y = nav_pitch_cd;
-    targets.z = 0;          //Plane does not have the concept of navyaw. This is a placeholder.
 
+    if (quadplane.in_vtol_mode() || quadplane.in_assisted_flight()) {
+        // when VTOL active log the copter target yaw
+        targets.z = wrap_360_cd(quadplane.attitude_control->get_att_target_euler_cd().z);
+    } else {
+        //Plane does not have the concept of navyaw. This is a placeholder.
+        targets.z = 0;
+    }
+    
     if (quadplane.tailsitter_active()) {
         DataFlash.Log_Write_AttitudeView(*quadplane.ahrs_view, targets);
     } else {
@@ -466,6 +473,12 @@ void Plane::Log_Write_Airspeed(void)
     DataFlash.Log_Write_Airspeed(airspeed);
 }
 
+// Write a AOA and SSA packet
+void Plane::Log_Write_AOA_SSA(void)
+{
+    DataFlash.Log_Write_AOA_SSA(ahrs);
+}
+
 // log ahrs home and EKF origin to dataflash
 void Plane::Log_Write_Home_And_Origin()
 {
@@ -502,7 +515,9 @@ const struct LogStructure Plane::log_structure[] = {
     { LOG_STATUS_MSG, sizeof(log_Status),
       "STAT", "QBfBBBBBB",  "TimeUS,isFlying,isFlyProb,Armed,Safety,Crash,Still,Stage,Hit" },
     { LOG_QTUN_MSG, sizeof(QuadPlane::log_QControl_Tuning),
-      "QTUN", "Qffffehhffff", "TimeUS,AngBst,ThrOut,DAlt,Alt,BarAlt,DCRt,CRt,DVx,DVy,DAx,DAy" },
+      "QTUN", "Qffffhhfffff", "TimeUS,AngBst,ThrOut,DAlt,Alt,DCRt,CRt,DVx,DVy,DAx,DAy,TMix" },
+    { LOG_AOA_SSA_MSG, sizeof(log_AOA_SSA),
+      "AOA", "Qff", "TimeUS,AOA,SSA" },
 #if OPTFLOW == ENABLED
     { LOG_OPTFLOW_MSG, sizeof(log_Optflow),
       "OF",   "QBffff",   "TimeUS,Qual,flowX,flowY,bodyX,bodyY" },
@@ -540,16 +555,12 @@ void Plane::Log_Write_Vehicle_Startup_Messages()
     DataFlash.Log_Write_Mode(control_mode);
     DataFlash.Log_Write_Rally(rally);
     Log_Write_Home_And_Origin();
+    gps.Write_DataFlash_Log_Startup_messages();
 }
 
 // start a new log
 void Plane::start_logging() 
 {
-    DataFlash.set_mission(&mission);
-    DataFlash.setVehicle_Startup_Log_Writer(
-        FUNCTOR_BIND(&plane, &Plane::Log_Write_Vehicle_Startup_Messages, void)
-        );
-
     DataFlash.StartNewLog();
 }
 

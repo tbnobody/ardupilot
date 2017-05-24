@@ -23,7 +23,7 @@ void Sub::init_ardupilot()
     // initialise serial port
     serial_manager.init_console();
 
-    cliSerial->printf("\n\nInit " FIRMWARE_STRING
+    hal.console->printf("\n\nInit " FIRMWARE_STRING
                       "\n\nFree RAM: %u\n",
                       (unsigned)hal.util->available_memory());
 
@@ -54,11 +54,6 @@ void Sub::init_ardupilot()
     // anytime there are more than 5ms remaining in a call to
     // hal.scheduler->delay.
     hal.scheduler->register_delay_callback(mavlink_delay_cb_static, 5);
-
-    // we start by assuming USB connected, as we initialed the serial
-    // port with SERIAL0_BAUD. check_usb_mux() fixes this if need be.
-    ap.usb_connected = true;
-    check_usb_mux();
 
     // setup telem slots with serial ports
     for (uint8_t i = 0; i < MAVLINK_COMM_NUM_BUFFERS; i++) {
@@ -115,7 +110,9 @@ void Sub::init_ardupilot()
     pos_control.set_dt(MAIN_LOOP_SECONDS);
 
     // init the optical flow sensor
+#if OPTFLOW == ENABLED
     init_optflow();
+#endif
 
 #if MOUNT == ENABLED
     // initialise camera mount
@@ -126,16 +123,17 @@ void Sub::init_ardupilot()
     USERHOOK_INIT
 #endif
 
-    // read Baro pressure at ground
-    //-----------------------------
+    // Init baro and determine if we have external (depth) pressure sensor
     init_barometer(false);
     barometer.update();
 
     for (uint8_t i = 0; i < barometer.num_instances(); i++) {
-        if (barometer.get_type(i) == AP_Baro::BARO_TYPE_WATER && barometer.healthy(i)) {
+        if (barometer.get_type(i) == AP_Baro::BARO_TYPE_WATER) {
             barometer.set_primary_baro(i);
+            depth_sensor_idx = i;
             ap.depth_sensor_present = true;
-            break;
+            sensor_health.depth = barometer.healthy(depth_sensor_idx); // initialize health flag
+            break; // Go with the first one we find
         }
     }
 
@@ -152,11 +150,6 @@ void Sub::init_ardupilot()
 
     leak_detector.init();
 
-    // backwards compatibility
-    if (attitude_control.get_accel_yaw_max() < 110000.0f) {
-        attitude_control.save_accel_yaw_max(110000.0f);
-    }
-
     last_pilot_heading = ahrs.yaw_sensor;
 
     // initialise rangefinder
@@ -171,6 +164,10 @@ void Sub::init_ardupilot()
 
     // initialise mission library
     mission.init();
+
+    // initialise DataFlash library
+    DataFlash.set_mission(&mission);
+    DataFlash.setVehicle_Startup_Log_Writer(FUNCTOR_BIND(&sub, &Sub::Log_Write_Vehicle_Startup_Messages, void));
 
     startup_INS_ground();
 
@@ -188,7 +185,14 @@ void Sub::init_ardupilot()
     // init vehicle capabilties
     init_capabilities();
 
-    cliSerial->print("\nReady to FLY ");
+    if (DataFlash.log_while_disarmed()) {
+        start_logging(); // create a new log if necessary
+    }
+
+    // disable safety if requested
+    BoardConfig.init_safety();    
+    
+    hal.console->print("\nInit complete");
 
     // flag that initialisation has completed
     ap.initialised = true;
@@ -281,40 +285,6 @@ bool Sub::optflow_position_ok()
 #endif
 }
 
-// update_auto_armed - update status of auto_armed flag
-void Sub::update_auto_armed()
-{
-    // disarm checks
-    if (ap.auto_armed) {
-        // if motors are disarmed, auto_armed should also be false
-        if (!motors.armed()) {
-            set_auto_armed(false);
-            return;
-        }
-        // if in stabilize or acro flight mode auto-armed should become false
-        if (mode_has_manual_throttle(control_mode) && !failsafe.manual_control) {
-            set_auto_armed(false);
-        }
-    } else {
-        // arm checks
-        // if motors are armed and throttle is above zero auto_armed should be true
-        if (motors.armed()) {
-            set_auto_armed(true);
-        }
-    }
-}
-
-void Sub::check_usb_mux(void)
-{
-    bool usb_check = hal.gpio->usb_connected();
-    if (usb_check == ap.usb_connected) {
-        return;
-    }
-
-    // the user has switched to/from the telemetry port
-    ap.usb_connected = usb_check;
-}
-
 /*
   should we log a message type now?
  */
@@ -324,10 +294,7 @@ bool Sub::should_log(uint32_t mask)
     if (!(mask & g.log_bitmask) || in_mavlink_delay) {
         return false;
     }
-    bool ret = motors.armed() || DataFlash.log_while_disarmed();
-    if (ret && !DataFlash.logging_started() && !in_log_download) {
-        start_logging();
-    }
+    bool ret = DataFlash.logging_started() && (motors.armed() || DataFlash.log_while_disarmed());
     return ret;
 #else
     return false;

@@ -121,6 +121,15 @@ void Plane::send_attitude(mavlink_channel_t chan)
         omega.z);
 }
 
+void Plane::send_aoa_ssa(mavlink_channel_t chan)
+{
+    mavlink_msg_aoa_ssa_send(
+        chan,
+        micros(),
+        ahrs.getAOA(),
+        ahrs.getSSA());
+}
+
 #if GEOFENCE_ENABLED == ENABLED
 void Plane::send_fence_status(mavlink_channel_t chan)
 {
@@ -684,6 +693,15 @@ bool GCS_MAVLINK_Plane::try_send_message(enum ap_message id)
         CHECK_PAYLOAD_SIZE(ADSB_VEHICLE);
         plane.adsb.send_adsb_vehicle(chan);
         break;
+    case MSG_BATTERY_STATUS:
+        send_battery_status(plane.battery);
+        break;
+    case MSG_AOA_SSA:
+        CHECK_PAYLOAD_SIZE(AOA_SSA);
+        plane.send_aoa_ssa(chan);
+    case MSG_LANDING:
+        plane.landing.send_landing_message(chan);
+        break;
     }
     return true;
 }
@@ -794,14 +812,7 @@ GCS_MAVLINK_Plane::data_stream_send(void)
         handle_log_send(plane.DataFlash);
     }
 
-    if (_queued_parameter != nullptr) {
-        if (streamRates[STREAM_PARAMS].get() <= 0) {
-            streamRates[STREAM_PARAMS].set(10);
-        }
-        if (stream_trigger(STREAM_PARAMS)) {
-            send_message(MSG_NEXT_PARAM);
-        }
-    }
+    send_queued_parameters();
 
     if (plane.gcs_out_of_time) return;
 
@@ -870,9 +881,12 @@ GCS_MAVLINK_Plane::data_stream_send(void)
         send_message(MSG_ATTITUDE);
         send_message(MSG_SIMSTATE);
         send_message(MSG_RPM);
+        send_message(MSG_AOA_SSA);
+
         if (plane.control_mode != MANUAL) {
             send_message(MSG_PID_TUNING);
         }
+        send_message(MSG_LANDING);
     }
 
     if (plane.gcs_out_of_time) return;
@@ -895,6 +909,7 @@ GCS_MAVLINK_Plane::data_stream_send(void)
         send_message(MSG_MAG_CAL_REPORT);
         send_message(MSG_MAG_CAL_PROGRESS);
         send_message(MSG_BATTERY2);
+        send_message(MSG_BATTERY_STATUS);
         send_message(MSG_MOUNT_STATUS);
         send_message(MSG_OPTICAL_FLOW);
         send_message(MSG_EKF_STATUS_REPORT);
@@ -2144,7 +2159,6 @@ void Plane::mavlink_delay_cb()
         last_5s = tnow;
         gcs_send_text(MAV_SEVERITY_INFO, "Initialising APM");
     }
-    check_usb_mux();
 
     in_mavlink_delay = false;
 }

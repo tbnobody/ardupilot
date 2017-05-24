@@ -9,10 +9,15 @@
 #include <unistd.h>
 
 #include <drivers/drv_pwm_output.h>
-#include <uORB/topics/actuator_direct.h>
 #include <drivers/drv_hrt.h>
 #include <drivers/drv_pwm_output.h>
 #include <drivers/drv_sbus.h>
+
+#include <AP_BoardConfig/AP_BoardConfig.h>
+
+#if HAL_WITH_UAVCAN
+#include <AP_UAVCAN/AP_UAVCAN.h>
+#endif
 
 extern const AP_HAL::HAL& hal;
 
@@ -69,12 +74,6 @@ void PX4RCOutput::init()
     for (uint8_t i=0; i < PX4_NUM_OUTPUT_CHANNELS; i++) {
         _period[i] = PWM_IGNORE_THIS_CHANNEL;
     }
-
-    // publish actuator vaules on demand
-    _actuator_direct_pub = nullptr;
-
-    // and armed state
-    _actuator_armed_pub = nullptr;
 }
 
 
@@ -423,53 +422,6 @@ void PX4RCOutput::_arm_actuators(bool arm)
     }
 }
 
-/*
-  publish new outputs to the actuator_direct topic
- */
-void PX4RCOutput::_publish_actuators(void)
-{
-	struct actuator_direct_s actuators;
-
-    if (_esc_pwm_min == 0 ||
-        _esc_pwm_max == 0) {
-        // not initialised yet
-        return;
-    }
-
-	actuators.nvalues = _max_channel;
-    if (actuators.nvalues > actuators.NUM_ACTUATORS_DIRECT) {
-        actuators.nvalues = actuators.NUM_ACTUATORS_DIRECT;
-    }
-    // don't publish more than 8 actuators for now, as the uavcan ESC
-    // driver refuses to update any motors if you try to publish more
-    // than 8
-    if (actuators.nvalues > 8) {
-        actuators.nvalues = 8;
-    }
-    bool armed = hal.util->get_soft_armed();
-	actuators.timestamp = hrt_absolute_time();
-    for (uint8_t i=0; i<actuators.nvalues; i++) {
-        if (!armed) {
-            actuators.values[i] = 0;
-        } else {
-            actuators.values[i] = (_period[i] - _esc_pwm_min) / (float)(_esc_pwm_max - _esc_pwm_min);
-        }
-        // actuator values are from -1 to 1
-        actuators.values[i] = actuators.values[i]*2 - 1;
-    }
-
-    if (_actuator_direct_pub == nullptr) {
-        _actuator_direct_pub = orb_advertise(ORB_ID(actuator_direct), &actuators);
-    } else {
-        orb_publish(ORB_ID(actuator_direct), _actuator_direct_pub, &actuators);
-    }
-    if (hal.util->safety_switch_state() != AP_HAL::Util::SAFETY_DISARMED) {
-        _arm_actuators(true);
-    } else {
-        _arm_actuators(false);
-    }
-}
-
 void PX4RCOutput::_send_outputs(void)
 {
     uint32_t now = AP_HAL::micros();
@@ -514,6 +466,8 @@ void PX4RCOutput::_send_outputs(void)
             }
         }
         if (to_send > 0) {
+            _arm_actuators(true);
+
             ::write(_pwm_fd, _period, to_send*sizeof(_period[0]));
         }
         if (_max_channel > _servo_count) {
@@ -529,8 +483,34 @@ void PX4RCOutput::_send_outputs(void)
             }
         }
 
-        // also publish to actuator_direct
-        _publish_actuators();
+        if(AP_BoardConfig::get_can_enable() >= 1)
+        {
+#if HAL_WITH_UAVCAN
+
+            if(hal.can_mgr != nullptr)
+            {
+                AP_UAVCAN *ap_uc = hal.can_mgr->get_UAVCAN();
+                if(ap_uc != nullptr)
+                {
+                    if(ap_uc->rc_out_sem_take())
+                    {
+                        for(uint8_t i = 0; i < _max_channel; i++)
+                        {
+                            ap_uc->rco_write(_period[i], i);
+                        }
+
+                        if (hal.util->safety_switch_state() != AP_HAL::Util::SAFETY_DISARMED) {
+                            ap_uc->rco_arm_actuators(true);
+                        } else {
+                            ap_uc->rco_arm_actuators(false);
+                        }
+
+                        ap_uc->rc_out_sem_give();
+                    }
+                }
+            }
+#endif // HAL_WITH_UAVCAN
+        }
 
         perf_end(_perf_rcout);
         _last_output = now;
@@ -563,10 +543,12 @@ void PX4RCOutput::push()
     hal.gpio->pinMode(55, HAL_GPIO_OUTPUT);
     hal.gpio->write(55, 0);
 #endif
-    _corking = false;
-    if (_output_mode == MODE_PWM_ONESHOT) {
-        // run timer immediately in oneshot mode
-        _send_outputs();
+    if (_corking) {
+        _corking = false;
+        if (_output_mode == MODE_PWM_ONESHOT) {
+            // run timer immediately in oneshot mode
+            _send_outputs();
+        }
     }
 }
 
