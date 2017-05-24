@@ -165,8 +165,8 @@ void Copter::init_ardupilot()
 #endif
 
 #if HOTT_TELEM_ENABLED == ENABLED
-    // setup HoTT
-    hott_telemetry.init(serial_manager);
+    // setup HoTT, and pass a number of parameters to the library
+   hott_telemetry.init(serial_manager, FIRMWARE_STRING);
 #endif
 
 #if LOGGING_ENABLED == ENABLED

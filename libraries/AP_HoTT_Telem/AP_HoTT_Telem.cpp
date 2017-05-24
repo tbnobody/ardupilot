@@ -86,7 +86,7 @@ AP_HoTT_Telem::AP_HoTT_Telem(AP_AHRS &ahrs, AP_BattMonitor &battery, Location &c
 {}
 
 // init - perform require initialisation including detecting which protocol to use
-void AP_HoTT_Telem::init(const AP_SerialManager& serial_manager)
+void AP_HoTT_Telem::init(const AP_SerialManager& serial_manager, const char *firmware_str)
 {
     // check for HoTT Port
     if ((_port = serial_manager.find_serial(AP_SerialManager::SerialProtocol_HoTT, 0))) {

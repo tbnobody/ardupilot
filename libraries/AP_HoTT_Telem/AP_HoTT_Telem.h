@@ -32,7 +32,7 @@ public:
     AP_HoTT_Telem(AP_AHRS &ahrs, AP_BattMonitor &battery, Location &current_loc, AP_Baro &barometer);
 
     // init - perform require initialisation including detecting which protocol to use
-    void init(const AP_SerialManager& serial_manager);
+    void init(const AP_SerialManager& serial_manager, const char *firmware_str);
 
     // update flight control mode. The control mode is vehicle type specific
     void update_control_mode(uint8_t mode);
