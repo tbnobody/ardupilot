@@ -417,7 +417,7 @@ int16_t AP_HoTT_Telem::get_altitude_rel()
 
 void AP_HoTT_Telem::update_gps_data()
 {
-    const AP_GPS &gps = _ahrs.get_gps();
+    const AP_GPS &gps = AP::gps();
 
     // Mean sea level altitude
     if (_current_loc.flags.relative_alt) {
@@ -516,7 +516,7 @@ void AP_HoTT_Telem::update_gps_data()
     // Climbrate
     _hott_gps_msg.climbrate_L = (HOTT_OFFSET_CLIMBRATE + _climbrate1s);
     _hott_gps_msg.climbrate_H = (HOTT_OFFSET_CLIMBRATE + _climbrate1s) >> 8;
-    
+
     _hott_gps_msg.climbrate3s            = 120   + (_climbrate3s / 100);  // 0 m/3s
 
     // GPS Time
@@ -535,7 +535,7 @@ void AP_HoTT_Telem::update_eam_data()
 {
     static AP_HoTT_Alarm::HoTT_Alarm_Event_t e = {0, 0, 0, 0, 0, 0}; //used to save visual alarm states
 
-    const AP_GPS &gps = _ahrs.get_gps();
+    const AP_GPS &gps = AP::gps();
 
     // Battery
     _hott_eam_msg.main_voltage_L = ((uint8_t)(_battery.voltage() * (float)10.0));
@@ -545,8 +545,8 @@ void AP_HoTT_Telem::update_eam_data()
     _hott_eam_msg.current_L      = ((uint8_t)(_battery.current_amps() * (float)10.0));
     _hott_eam_msg.current_H      = ((uint8_t)(_battery.current_amps() * (float)10.0)) >> 8;
 
-    _hott_eam_msg.batt_cap_L     = ((uint8_t)(_battery.current_total_mah() / (float)10.0));
-    _hott_eam_msg.batt_cap_H     = ((uint8_t)(_battery.current_total_mah() / (float)10.0)) >> 8;
+    _hott_eam_msg.batt_cap_L     = ((uint8_t)(_battery.pack_capacity_mah() / (float)10.0));
+    _hott_eam_msg.batt_cap_H     = ((uint8_t)(_battery.pack_capacity_mah() / (float)10.0)) >> 8;
 
     // Climbrate
     _hott_eam_msg.climbrate3s             = 120   + (_climbrate3s / 100);  // 0 m/3s using filtered data here

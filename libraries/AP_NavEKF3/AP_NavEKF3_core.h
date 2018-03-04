@@ -58,8 +58,11 @@
 #define ACCEL_BIAS_LIM_SCALER 0.2f
 
 // target update time for the EKF in msec and sec
-#define EKF_TARGET_DT_MS 10.0
-#define EKF_TARGET_DT    0.01
+#define EKF_TARGET_DT_MS 12
+#define EKF_TARGET_DT    0.012f
+
+// mag fusion final reset altitude (using NED frame so altitude is negative)
+#define EKF3_MAG_FINAL_RESET_ALT 2.5f
 
 class AP_AHRS;
 
@@ -189,6 +192,9 @@ public:
     // return the innovation consistency test ratios for the velocity, position, magnetometer and true airspeed measurements
     void getVariances(float &velVar, float &posVar, float &hgtVar, Vector3f &magVar, float &tasVar, Vector2f &offset) const;
 
+    // return the diagonals from the covariance matrix
+    void getStateVariances(float stateVar[24]);
+
     // should we use the compass? This is public so it can be used for
     // reporting via ahrs.use_compass()
     bool use_compass(void) const;
@@ -216,6 +222,17 @@ public:
      * posOffset is the XYZ body frame position of the camera focal point (m)
     */
     void writeBodyFrameOdom(float quality, const Vector3f &delPos, const Vector3f &delAng, float delTime, uint32_t timeStamp_ms, const Vector3f &posOffset);
+
+    /*
+     * Write odometry data from a wheel encoder. The axis of rotation is assumed to be parallel to the vehicle body axis
+     *
+     * delAng is the measured change in angular position from the previous measurement where a positive rotation is produced by forward motion of the vehicle (rad)
+     * delTime is the time interval for the measurement of delAng (sec)
+     * timeStamp_ms is the time when the rotation was last measured (msec)
+     * posOffset is the XYZ body frame position of the wheel hub (m)
+     * radius is the effective rolling radius of the wheel (m)
+    */
+    void writeWheelOdom(float delAng, float delTime, uint32_t timeStamp_ms, const Vector3f &posOffset, float radius);
 
     /*
      * Return data for debugging body frame odometry fusion:
@@ -473,11 +490,19 @@ private:
         const Vector3f *body_offset;// pointer to XYZ position of the optical flow sensor in body frame (m)
     };
 
-    struct bfodm_elements {
+    struct vel_odm_elements {
         Vector3f        vel;        // XYZ velocity measured in body frame (m/s)
         float           velErr;     // velocity measurement error 1-std (m/s)
         const Vector3f *body_offset;// pointer to XYZ position of the velocity sensor in body frame (m)
         Vector3f        angRate;    // angular rate estimated from odometry (rad/sec)
+        uint32_t        time_ms;    // measurement timestamp (msec)
+    };
+
+    struct wheel_odm_elements {
+        float           delAng;     // wheel rotation angle measured in body frame - positive is forward movement of vehicle (rad/s)
+        float           radius;     // wheel radius (m)
+        const Vector3f *hub_offset; // pointer to XYZ position of the wheel hub in body frame (m)
+        float           delTime;    // time interval that the measurement was accumulated over (sec)
         uint32_t        time_ms;    // measurement timestamp (msec)
     };
 
@@ -492,9 +517,6 @@ private:
 
     // force symmetry on the state covariance matrix
     void ForceSymmetry();
-
-    // copy covariances across from covariance prediction calculation and fix numerical errors
-    void CopyCovariances();
 
     // constrain variances (diagonal terms) in the state covariance matrix
     void ConstrainVariances();
@@ -743,8 +765,8 @@ private:
     // calculate a filtered offset between baro height measurement and EKF height estimate
     void calcFiltBaroOffset();
 
-    // calculate a filtered offset between GPS height measurement and EKF height estimate
-    void calcFiltGpsHgtOffset();
+    // correct the height of the EKF origin to be consistent with GPS Data using a Bayes filter.
+    void correctEkfOriginHeight();
 
     // Select height data to be fused from the available baro, range finder and GPS sources
     void selectHeightForFusion();
@@ -769,6 +791,9 @@ private:
 
     // update timing statistics structure
     void updateTimingStatistics(void);
+
+    // Update the state index limit based on which states are active
+    void updateStateIndexLim(void);
     
     // Variables
     bool statesInitialised;         // boolean true when filter states have been initialised
@@ -843,11 +868,6 @@ private:
     uint32_t lastSynthYawTime_ms;   // time stamp when synthetic yaw measurement was last fused to maintain covariance health (msec)
     uint32_t ekfStartTime_ms;       // time the EKF was started (msec)
     Matrix24 nextP;                 // Predicted covariance matrix before addition of process noise to diagonals
-    Vector24 processNoise;          // process noise added to diagonals of predicted covariance matrix
-    Vector21 SF;                    // intermediate variables used to calculate predicted covariance matrix
-    Vector8 SG;                     // intermediate variables used to calculate predicted covariance matrix
-    Vector11 SQ;                    // intermediate variables used to calculate predicted covariance matrix
-    Vector11 SPP;                   // intermediate variables used to calculate predicted covariance matrix
     Vector2f lastKnownPositionNE;   // last known position
     uint32_t lastDecayTime_ms;      // time of last decay of GPS position offset
     float velTestRatio;             // sum of squares of GPS velocity innovation divided by fail threshold
@@ -857,10 +877,10 @@ private:
     float tasTestRatio;             // sum of squares of true airspeed innovation divided by fail threshold
     bool inhibitWindStates;         // true when wind states and covariances are to remain constant
     bool inhibitMagStates;          // true when magnetic field states are inactive
-    bool inhibitDelVelBiasStates;   // true when delta velocity bias states are inactive
-    bool inhibitDelAngBiasStates;
+    bool inhibitDelVelBiasStates;   // true when IMU delta velocity bias states are inactive
+    bool inhibitDelAngBiasStates;   // true when IMU delta angle bias states are inactive
     bool gpsNotAvailable;           // bool true when valid GPS data is not available
-    struct Location EKF_origin;     // LLH origin of the NED axis system - do not change unless filter is reset
+    struct Location EKF_origin;     // LLH origin of the NED axis system
     bool validOrigin;               // true when the EKF origin is valid
     float gpsSpdAccuracy;           // estimated speed accuracy in m/s returned by the GPS receiver
     float gpsPosAccuracy;           // estimated position accuracy in m returned by the GPS receiver
@@ -938,6 +958,7 @@ private:
     bool delAngBiasLearned;         // true when the gyro bias has been learned
     nav_filter_status filterStatus; // contains the status of various filter outputs
     float ekfOriginHgtVar;          // Variance of the the EKF WGS-84 origin height estimate (m^2)
+    double ekfGpsRefHgt;            // floating point representation of the WGS-84 reference height used to convert GPS height to local height (m)
     uint32_t lastOriginHgtTime_ms;  // last time the ekf's WGS-84 origin height was corrected
     Vector3f outputTrackError;      // attitude (rad), velocity (m/s) and position (m) tracking error magnitudes from the output observer
     Vector3f velOffsetNED;          // This adds to the earth frame velocity estimate at the IMU to give the velocity at the body origin (m/s)
@@ -994,8 +1015,6 @@ private:
     bool fuseOptFlowData;           // this boolean causes the last optical flow measurement to be fused
     float auxFlowObsInnov;          // optical flow rate innovation from 1-state terrain offset estimator
     float auxFlowObsInnovVar;       // innovation variance for optical flow observations from 1-state terrain offset estimator
-    Vector2 flowRadXYcomp;          // motion compensated optical flow angular rates(rad/sec)
-    Vector2 flowRadXY;              // raw (non motion compensated) optical flow angular rates (rad/sec)
     uint32_t flowValidMeaTime_ms;   // time stamp from latest valid flow measurement (msec)
     uint32_t rngValidMeaTime_ms;    // time stamp from latest valid range measurement (msec)
     uint32_t flowMeaTime_ms;        // time stamp from latest flow measurement (msec)
@@ -1047,10 +1066,9 @@ private:
     uint32_t terrainHgtStableSet_ms;        // system time at which terrainHgtStable was set
 
     // body frame odometry fusion
-    obs_ring_buffer_t<bfodm_elements> storedBodyOdm;    // body velocity data buffer
-    bfodm_elements bodyOdmDataNew;       // Body frame odometry data at the current time horizon
-    bfodm_elements bodyOdmDataDelayed;  // Body  frame odometry data at the fusion time horizon
-    uint8_t bodyOdmStoreIndex;          // Body  frame odometry  data storage index
+    obs_ring_buffer_t<vel_odm_elements> storedBodyOdm;    // body velocity data buffer
+    vel_odm_elements bodyOdmDataNew;       // Body frame odometry data at the current time horizon
+    vel_odm_elements bodyOdmDataDelayed;  // Body  frame odometry data at the fusion time horizon
     uint32_t lastbodyVelPassTime_ms;    // time stamp when the body velocity measurement last passed innovation consistency checks (msec)
     Vector3 bodyVelTestRatio;           // Innovation test ratios for body velocity XYZ measurements
     Vector3 varInnovBodyVel;            // Body velocity XYZ innovation variances (rad/sec)^2
@@ -1059,6 +1077,13 @@ private:
     uint32_t bodyOdmMeasTime_ms;        // time body velocity measurements were accepted for input to the data buffer (msec)
     bool bodyVelFusionDelayed;          // true when body frame velocity fusion has been delayed
     bool bodyVelFusionActive;           // true when body frame velocity fusion is active
+
+    // wheel sensor fusion
+    uint32_t wheelOdmMeasTime_ms;       // time wheel odometry measurements were accepted for input to the data buffer (msec)
+    bool usingWheelSensors;             // true when the body frame velocity fusion method should take onbservation data from the wheel odometry buffer
+    obs_ring_buffer_t<wheel_odm_elements> storedWheelOdm;    // body velocity data buffer
+    wheel_odm_elements wheelOdmDataNew;       // Body frame odometry data at the current time horizon
+    wheel_odm_elements wheelOdmDataDelayed;   // Body  frame odometry data at the fusion time horizon
 
 
     // Range Beacon Sensor Fusion
@@ -1094,11 +1119,11 @@ private:
 
     float bcnPosDownOffsetMax;          // Vertical position offset of the beacon constellation origin relative to the EKF origin (m)
     float bcnPosOffsetMaxVar;           // Variance of the bcnPosDownOffsetMax state (m)
-    float OffsetMaxInnovFilt;           // Filtered magnitude of the range innovations using bcnPosOffsetHigh
+    float maxOffsetStateChangeFilt;     // Filtered magnitude of the change in bcnPosOffsetHigh
 
     float bcnPosDownOffsetMin;          // Vertical position offset of the beacon constellation origin relative to the EKF origin (m)
     float bcnPosOffsetMinVar;           // Variance of the bcnPosDownOffsetMin state (m)
-    float OffsetMinInnovFilt;           // Filtered magnitude of the range innovations using bcnPosOffsetLow
+    float minOffsetStateChangeFilt;     // Filtered magnitude of the change in bcnPosOffsetLow
 
     Vector3f bcnPosOffsetNED;           // NED position of the beacon origin in earth frame (m)
     bool bcnOriginEstInit;              // True when the beacon origin has been initialised

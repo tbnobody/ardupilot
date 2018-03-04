@@ -6,7 +6,7 @@
  */
 
 static bool failsafe_enabled = false;
-static uint16_t failsafe_last_mainLoop_count;
+static uint16_t failsafe_last_ticks;
 static uint32_t failsafe_last_timestamp;
 static bool in_failsafe;
 
@@ -30,9 +30,10 @@ void Sub::mainloop_failsafe_check()
 {
     uint32_t tnow = AP_HAL::micros();
 
-    if (mainLoop_count != failsafe_last_mainLoop_count) {
+    const uint16_t ticks = scheduler.ticks();
+    if (ticks != failsafe_last_ticks) {
         // the main loop is running, all is OK
-        failsafe_last_mainLoop_count = mainLoop_count;
+        failsafe_last_ticks = ticks;
         failsafe_last_timestamp = tnow;
         if (in_failsafe) {
             in_failsafe = false;
@@ -82,7 +83,7 @@ void Sub::failsafe_sensors_check(void)
     }
 
     failsafe.sensor_health = true;
-    gcs_send_text(MAV_SEVERITY_CRITICAL, "Depth sensor error!");
+    gcs().send_text(MAV_SEVERITY_CRITICAL, "Depth sensor error!");
     Log_Write_Error(ERROR_SUBSYSTEM_FAILSAFE_SENSORS, ERROR_CODE_BAD_DEPTH);
 
     if (control_mode == ALT_HOLD || control_mode == SURFACE || mode_requires_GPS(control_mode)) {
@@ -139,7 +140,7 @@ void Sub::failsafe_ekf_check(void)
 
     if (AP_HAL::millis() > failsafe.last_ekf_warn_ms + 20000) {
         failsafe.last_ekf_warn_ms = AP_HAL::millis();
-        gcs_send_text(MAV_SEVERITY_WARNING, "EKF bad");
+        gcs().send_text(MAV_SEVERITY_WARNING, "EKF bad");
     }
 
     if (g.fs_ekf_action == FS_EKF_ACTION_DISARM) {
@@ -167,7 +168,7 @@ void Sub::failsafe_battery_check(void)
     // Always warn when failsafe condition is met
     if (AP_HAL::millis() > failsafe.last_battery_warn_ms + 20000) {
         failsafe.last_battery_warn_ms = AP_HAL::millis();
-        gcs_send_text(MAV_SEVERITY_WARNING, "Low battery");
+        gcs().send_text(MAV_SEVERITY_WARNING, "Low battery");
     }
 
     // Don't do anything if failsafe has already been set
@@ -214,10 +215,11 @@ void Sub::failsafe_pilot_input_check()
     failsafe.pilot_input = true;
 
     Log_Write_Error(ERROR_SUBSYSTEM_INPUT, ERROR_CODE_FAILSAFE_OCCURRED);
-    gcs_send_text(MAV_SEVERITY_CRITICAL, "Lost manual control");
+    gcs().send_text(MAV_SEVERITY_CRITICAL, "Lost manual control");
+
+    set_neutral_controls();
 
     if(g.failsafe_pilot_input == FS_PILOT_INPUT_DISARM) {
-        set_neutral_controls();
         init_disarm_motors();
     }
 #endif
@@ -251,7 +253,7 @@ void Sub::failsafe_internal_pressure_check()
     // Warn every 30 seconds
     if (failsafe.internal_pressure && tnow > last_pressure_warn_ms + 30000) {
         last_pressure_warn_ms = tnow;
-        gcs_send_text(MAV_SEVERITY_WARNING, "Internal pressure critical!");
+        gcs().send_text(MAV_SEVERITY_WARNING, "Internal pressure critical!");
     }
 }
 
@@ -283,11 +285,11 @@ void Sub::failsafe_internal_temperature_check()
     // Warn every 30 seconds
     if (failsafe.internal_temperature && tnow > last_temperature_warn_ms + 30000) {
         last_temperature_warn_ms = tnow;
-        gcs_send_text(MAV_SEVERITY_WARNING, "Internal temperature critical!");
+        gcs().send_text(MAV_SEVERITY_WARNING, "Internal temperature critical!");
     }
 }
 
-// Check if we are leaking and perform appropiate action
+// Check if we are leaking and perform appropriate action
 void Sub::failsafe_leak_check()
 {
     bool status = leak_detector.get_status();
@@ -297,6 +299,7 @@ void Sub::failsafe_leak_check()
         if (failsafe.leak) {
             Log_Write_Error(ERROR_SUBSYSTEM_FAILSAFE_LEAK, ERROR_CODE_FAILSAFE_RESOLVED);
         }
+        AP_Notify::flags.leak_detected = false;
         failsafe.leak = false;
         return;
     }
@@ -309,7 +312,7 @@ void Sub::failsafe_leak_check()
     // Always send a warning every 20 seconds
     if (tnow > failsafe.last_leak_warn_ms + 20000) {
         failsafe.last_leak_warn_ms = tnow;
-        gcs_send_text(MAV_SEVERITY_CRITICAL, "Leak Detected");
+        gcs().send_text(MAV_SEVERITY_CRITICAL, "Leak Detected");
     }
 
     // Do nothing if we have already triggered the failsafe action, or if the motors are disarmed
@@ -355,7 +358,7 @@ void Sub::failsafe_gcs_check()
     // Send a warning every 30 seconds
     if (tnow > failsafe.last_gcs_warn_ms + 30000) {
         failsafe.last_gcs_warn_ms = tnow;
-        gcs_send_text_fmt(MAV_SEVERITY_WARNING, "MYGCS: %d, heartbeat lost", g.sysid_my_gcs);
+        gcs().send_text(MAV_SEVERITY_WARNING, "MYGCS: %d, heartbeat lost", g.sysid_my_gcs);
     }
 
     // do nothing if we have already triggered the failsafe action, or if the motors are disarmed
@@ -418,7 +421,7 @@ void Sub::failsafe_crash_check()
     // Send warning to GCS
     if (tnow > failsafe.last_crash_warn_ms + 20000) {
         failsafe.last_crash_warn_ms = tnow;
-        gcs_send_text(MAV_SEVERITY_WARNING,"Crash detected");
+        gcs().send_text(MAV_SEVERITY_WARNING,"Crash detected");
     }
 
     // Only perform failsafe action once
@@ -448,7 +451,7 @@ void Sub::failsafe_terrain_check()
     // check for clearing of event
     if (trigger_event != failsafe.terrain) {
         if (trigger_event) {
-            gcs_send_text(MAV_SEVERITY_CRITICAL,"Failsafe terrain triggered");
+            gcs().send_text(MAV_SEVERITY_CRITICAL,"Failsafe terrain triggered");
             failsafe_terrain_on_event();
         } else {
             Log_Write_Error(ERROR_SUBSYSTEM_FAILSAFE_TERRAIN, ERROR_CODE_ERROR_RESOLVED);

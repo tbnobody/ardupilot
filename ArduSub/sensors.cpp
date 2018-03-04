@@ -2,9 +2,9 @@
 
 void Sub::init_barometer(bool save)
 {
-    gcs_send_text(MAV_SEVERITY_INFO, "Calibrating barometer");
+    gcs().send_text(MAV_SEVERITY_INFO, "Calibrating barometer");
     barometer.calibrate(save);
-    gcs_send_text(MAV_SEVERITY_INFO, "Barometer calibration complete");
+    gcs().send_text(MAV_SEVERITY_INFO, "Barometer calibration complete");
 }
 
 // return barometric altitude in centimeters
@@ -102,15 +102,32 @@ void Sub::init_compass()
     ahrs.set_compass(&compass);
 }
 
+/*
+  if the compass is enabled then try to accumulate a reading
+  also update initial location used for declination
+ */
+void Sub::compass_accumulate(void)
+{
+    if (!g.compass_enabled) {
+        return;
+    }
+
+    compass.accumulate();
+
+    // update initial location used for declination
+    if (!ap.compass_init_location) {
+        Location loc;
+        if (ahrs.get_position(loc)) {
+            compass.set_initial_location(loc.lat, loc.lng);
+            ap.compass_init_location = true;
+        }
+    }
+}
+
 // initialise optical flow sensor
 #if OPTFLOW == ENABLED
 void Sub::init_optflow()
 {
-    // exit immediately if not enabled
-    if (!optflow.enabled()) {
-        return;
-    }
-
     // initialise optical flow sensor
     optflow.init();
 }
@@ -151,26 +168,17 @@ void Sub::read_battery(void)
 {
     battery.read();
 
-    // update compass with current value
-    if (battery.has_current()) {
-        compass.set_current(battery.current_amps());
-    }
-
     // update motors with voltage and current
-    if (battery.get_type() != AP_BattMonitor::BattMonitor_TYPE_NONE) {
+    if (battery.get_type() != AP_BattMonitor_Params::BattMonitor_TYPE_NONE) {
         motors.set_voltage(battery.voltage());
     }
 
     if (battery.has_current()) {
         motors.set_current(battery.current_amps());
+        compass.set_current(battery.current_amps());
     }
 
     failsafe_battery_check();
-
-    // log battery info to the dataflash
-    if (should_log(MASK_LOG_CURRENT)) {
-        Log_Write_Current();
-    }
 }
 
 void Sub::compass_cal_update()
@@ -192,11 +200,3 @@ void Sub::accel_cal_update()
         ahrs.set_trim(Vector3f(trim_roll, trim_pitch, 0));
     }
 }
-
-#if GRIPPER_ENABLED == ENABLED
-// gripper update
-void Sub::gripper_update()
-{
-    g2.gripper.update();
-}
-#endif

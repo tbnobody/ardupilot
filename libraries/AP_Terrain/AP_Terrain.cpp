@@ -25,10 +25,12 @@
 
 #include <assert.h>
 #include <stdio.h>
+#if HAL_OS_POSIX_IO
 #include <unistd.h>
-#include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#endif
+#include <sys/types.h>
 #include <errno.h>
 
 extern const AP_HAL::HAL& hal;
@@ -215,16 +217,11 @@ bool AP_Terrain::height_above_terrain(float &terrain_altitude, bool extrapolate)
     if (!height_terrain_difference_home(terrain_difference, extrapolate)) {
         return false;
     }
-    Location loc;
-    if (!ahrs.get_position(loc)) {
-        // we don't know where we are
-        return false;
-    }
-    float relative_home_altitude = loc.alt*0.01f;
-    if (!loc.flags.relative_alt) {
-        // loc.alt has home altitude added, remove it
-        relative_home_altitude -= ahrs.get_home().alt*0.01f;
-    }
+
+    float relative_home_altitude;
+    ahrs.get_relative_position_D_home(relative_home_altitude);
+    relative_home_altitude = -relative_home_altitude;
+
     terrain_altitude = relative_home_altitude - terrain_difference;
     return true;
 }
@@ -398,7 +395,7 @@ bool AP_Terrain::allocate(void)
     cache = (struct grid_cache *)calloc(TERRAIN_GRID_BLOCK_CACHE_SIZE, sizeof(cache[0]));
     if (cache == nullptr) {
         enable.set(0);
-        GCS_MAVLINK::send_statustext_all(MAV_SEVERITY_CRITICAL, "Terrain: Allocation failed");
+        gcs().send_text(MAV_SEVERITY_CRITICAL, "Terrain: Allocation failed");
         return false;
     }
     cache_size = TERRAIN_GRID_BLOCK_CACHE_SIZE;

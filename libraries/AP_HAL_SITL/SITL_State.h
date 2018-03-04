@@ -36,7 +36,8 @@ public:
     enum vehicle_type {
         ArduCopter,
         APMrover2,
-        ArduPlane
+        ArduPlane,
+        ArduSub
     };
 
     int gps_pipe(void);
@@ -44,6 +45,7 @@ public:
     ssize_t gps_read(int fd, void *buf, size_t count);
     uint16_t pwm_output[SITL_NUM_CHANNELS];
     uint16_t pwm_input[SITL_RC_INPUT_CHANNELS];
+    bool output_ready = false;
     bool new_rc_input;
     void loop_hook(void);
     uint16_t base_port(void) const {
@@ -70,7 +72,7 @@ public:
         "tcp:2",
         "tcp:3",
         "GPS2",
-        "tcp:4",
+        "tcp:5",
     };
     
 private:
@@ -83,8 +85,7 @@ private:
     void _setup_adc(void);
 
     void set_height_agl(void);
-    void _update_compass(void);
-
+    void _update_rangefinder(float range_value);
     void _set_signal_handlers(void) const;
 
     struct gps_data {
@@ -122,7 +123,7 @@ private:
 
     void _update_gps(double latitude, double longitude, float altitude,
                      double speedN, double speedE, double speedD, bool have_lock);
-    void _update_ins(float airspeed);
+    void _update_airspeed(float airspeed);
     void _update_gps_instance(SITL::SITL::GPSType gps_type, const struct gps_data *d, uint8_t instance);
     void _check_rc_input(void);
     void _fdm_input_local(void);
@@ -131,7 +132,6 @@ private:
     void _simulator_output(bool synthetic_clock_mode);
     uint16_t _airspeed_sensor(float airspeed);
     uint16_t _ground_sonar();
-    Vector3f _rand_vec3f(void);
     void _fdm_input_step(void);
 
     void wait_clock(uint64_t wait_time_usec);

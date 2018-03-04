@@ -63,7 +63,7 @@ void SITL_State::_sitl_setup(const char *home_str)
 {
     _home_str = home_str;
 
-#ifndef __CYGWIN__
+#if !defined(__CYGWIN__) && !defined(__CYGWIN64__)
     _parent_pid = getppid();
 #endif
     _rcout_addr.sin_family = AF_INET;
@@ -87,9 +87,9 @@ void SITL_State::_sitl_setup(const char *home_str)
     if (_sitl != nullptr) {
         // setup some initial values
 #ifndef HIL_MODE
-        _update_ins(0);
-        _update_compass();
+        _update_airspeed(0);
         _update_gps(0, 0, 0, 0, 0, 0, false);
+        _update_rangefinder(0);
 #endif
         if (enable_gimbal) {
             gimbal = new SITL::Gimbal(_sitl->state);
@@ -165,8 +165,8 @@ void SITL_State::_fdm_input_step(void)
                     _sitl->state.altitude,
                     _sitl->state.speedN, _sitl->state.speedE, _sitl->state.speedD,
                     !_sitl->gps_disable);
-        _update_ins(_sitl->state.airspeed);
-        _update_compass();
+        _update_airspeed(_sitl->state.airspeed);
+        _update_rangefinder(_sitl->state.range);
 
         if (_sitl->adsb_plane_count >= 0 &&
             adsb == nullptr) {
@@ -323,7 +323,7 @@ void SITL_State::_simulator_servos(SITL::Aircraft::sitl_input &input)
      * to change */
     uint8_t i;
 
-    if (last_update_usec == 0) {
+    if (last_update_usec == 0 || !output_ready) {
         for (i=0; i<SITL_NUM_CHANNELS; i++) {
             pwm_output[i] = 1000;
         }
@@ -343,10 +343,12 @@ void SITL_State::_simulator_servos(SITL::Aircraft::sitl_input &input)
     float altitude = _barometer?_barometer->get_altitude():0;
     float wind_speed = 0;
     float wind_direction = 0;
+    float wind_dir_z = 0;
     if (_sitl) {
         // The EKF does not like step inputs so this LPF keeps it happy.
-        wind_speed = _sitl->wind_speed_active = (0.95f*_sitl->wind_speed_active) + (0.05f*_sitl->wind_speed);
+        wind_speed =     _sitl->wind_speed_active     = (0.95f*_sitl->wind_speed_active)     + (0.05f*_sitl->wind_speed);
         wind_direction = _sitl->wind_direction_active = (0.95f*_sitl->wind_direction_active) + (0.05f*_sitl->wind_direction);
+        wind_dir_z =     _sitl->wind_dir_z_active     = (0.95f*_sitl->wind_dir_z_active)     + (0.05f*_sitl->wind_dir_z);
     }
 
     if (altitude < 0) {
@@ -359,6 +361,7 @@ void SITL_State::_simulator_servos(SITL::Aircraft::sitl_input &input)
     input.wind.speed = wind_speed;
     input.wind.direction = wind_direction;
     input.wind.turbulence = _sitl?_sitl->wind_turbulance:0;
+    input.wind.dir_z = wind_dir_z;
 
     for (i=0; i<SITL_NUM_CHANNELS; i++) {
         if (pwm_output[i] == 0xFFFF) {
@@ -410,13 +413,27 @@ void SITL_State::_simulator_servos(SITL::Aircraft::sitl_input &input)
     
     if (_sitl != nullptr) {
         if (_sitl->state.battery_voltage <= 0) {
-            // simulate simple battery setup
-            float throttle = motors_on?(input.servos[2]-1000) / 1000.0f:0;
-            // lose 0.7V at full throttle
-            voltage = _sitl->batt_voltage - 0.7f*fabsf(throttle);
-            
-            // assume 50A at full throttle
-            _current = 50.0f * fabsf(throttle);
+            if (_vehicle == ArduSub) {
+                voltage = _sitl->batt_voltage;
+                for (i = 0; i < 6; i++) {
+                    float pwm = input.servos[i];
+                    //printf("i: %d, pwm: %.2f\n", i, pwm);
+                    float fraction = fabsf((pwm - 1500) / 500.0f);
+
+                    voltage -= fraction * 0.5f;
+
+                    float draw = fraction * 15;
+                    _current += draw;
+                }
+            } else {
+                // simulate simple battery setup
+                float throttle = motors_on?(input.servos[2]-1000) / 1000.0f:0;
+                // lose 0.7V at full throttle
+                voltage = _sitl->batt_voltage - 0.7f*fabsf(throttle);
+
+                // assume 50A at full throttle
+                _current = 50.0f * fabsf(throttle);
+            }
         } else {
             // FDM provides voltage and current
             voltage = _sitl->state.battery_voltage;
@@ -428,20 +445,6 @@ void SITL_State::_simulator_servos(SITL::Aircraft::sitl_input &input)
     voltage_pin_value = ((voltage / 10.1f) / 5.0f) * 1024;
     current_pin_value = ((_current / 17.0f) / 5.0f) * 1024;
 }
-
-
-// generate a random Vector3f of size 1
-Vector3f SITL_State::_rand_vec3f(void)
-{
-    Vector3f v = Vector3f(rand_float(),
-                          rand_float(),
-                          rand_float());
-    if (v.length() != 0.0f) {
-        v.normalize();
-    }
-    return v;
-}
-
 
 void SITL_State::init(int argc, char * const argv[])
 {
