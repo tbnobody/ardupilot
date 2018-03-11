@@ -145,7 +145,7 @@ Copter::Mode *Copter::mode_from_mode_num(const uint8_t mode)
             ret = (Copter::Mode *)g2.mode_flowhold_ptr;
             break;
 #endif
-            
+
         default:
             break;
     }
@@ -214,6 +214,9 @@ bool Copter::set_mode(control_mode_t mode, mode_reason_t reason)
 
 #if FRSKY_TELEM_ENABLED == ENABLED
     frsky_telemetry.update_control_mode(control_mode);
+#endif
+#if HOTT_TELEM_ENABLED == ENABLED
+    hott_telemetry.update_control_mode(control_mode);
 #endif
 #if CAMERA == ENABLED
     camera.set_is_auto_mode(control_mode == AUTO);
